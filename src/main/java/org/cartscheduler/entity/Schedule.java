@@ -26,4 +26,7 @@ public class Schedule {
     @JoinTable(name = "schedule_access", joinColumns = @JoinColumn(name = "schedule_id"), inverseJoinColumns = @JoinColumn(name = "participant_id"))
     @JsonIgnore
     private List<Participant> accessibleParticipants;
+
+    @OneToMany(mappedBy="schedule")
+    private List<ScheduleDay> scheduleDays;
 }

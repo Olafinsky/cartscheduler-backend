@@ -26,9 +26,13 @@ public class AuthController {
         ParticipantAccessToken participantAccessToken = participantAccessTokenRepository.findAccessForToken(authRequest.getInvitationToken());
 
         if (participantAccessToken != null) {
+
+            long scheduleId = participantAccessToken.getSchedule().getId();
+
             RestAuthResponse response = new RestAuthResponse();
-            response.setJwtToken(jwtService.generateToken(participantAccessToken.getParticipant().getEmail()));
+            response.setJwtToken(jwtService.generateToken(participantAccessToken.getParticipant().getEmail(), scheduleId));
             response.setExpiresAt(jwtService.getExpirationTime());
+            response.setScheduleId(scheduleId);;
 
             return response;
         } else {

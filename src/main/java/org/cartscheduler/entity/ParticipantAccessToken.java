@@ -34,4 +34,8 @@ public class ParticipantAccessToken {
     @ManyToOne
     @JoinColumn(name = "participant_id")
     private Participant participant;
+
+    @ManyToOne
+    @JoinColumn(name = "schedule_id")
+    private Schedule schedule;
 }

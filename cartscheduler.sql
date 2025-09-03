@@ -33,10 +33,12 @@ CREATE TABLE IF NOT EXISTS `schedule_entries` (
 CREATE TABLE IF NOT EXISTS `participant_access_tokens` (
     `id` INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
     `participant_id` INTEGER NOT NULL,
+    `schedule_id` INTEGER NOT NULL,
     `token` VARCHAR(256) NOT NULL,
     `created_at` DATETIME NOT NULL,
     `expires_at` DATETIME NOT NULL,
-    FOREIGN KEY `fk_participant_id`(`participant_id`) REFERENCES `participants`(`id`) ON DELETE CASCADE
+    FOREIGN KEY (`participant_id`) REFERENCES `participants`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`schedule_id`) REFERENCES `schedules`(`id`) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS `schedule_access` (
@@ -45,6 +47,14 @@ CREATE TABLE IF NOT EXISTS `schedule_access` (
     `participant_id` INTEGER NOT NULL,
      FOREIGN KEY `fk_participant_id`(`participant_id`) REFERENCES `participants`(`id`) ON DELETE CASCADE,
      FOREIGN KEY `fk_schedule_id`(`schedule_id`) REFERENCES `schedules`(`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `participant_agents` (
+    `id` INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
+    `agent_participant_id` INTEGER NOT NULL,
+    `target_participant_id` INTEGER NOT NULL,
+    FOREIGN KEY `fk_agent_participant_id`(`agent_participant_id`) REFERENCES `participants`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY `fk_target_participant_id`(`target_participant_id`) REFERENCES `participants`(`id`) ON DELETE CASCADE
 );
 
 !-- TODO

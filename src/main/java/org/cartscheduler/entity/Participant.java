@@ -28,6 +28,20 @@ public class Participant {
     @ManyToMany(mappedBy = "accessibleParticipants")
     private List<Schedule> schedules;
 
+    @Transient
+    private ParticipantAccessToken currentAccessToken;
+
+    @ManyToMany
+    @JoinTable(
+            name = "participant_agents",
+            joinColumns = @JoinColumn(name = "agent_participant_id"),
+            inverseJoinColumns = @JoinColumn(name = "target_participant_id")
+    )
+    private List<Participant> assignedParticipants;
+
+    @ManyToMany(mappedBy = "assignedParticipants")
+    private List<Participant> agentParticipants;
+
     public Participant(Participant participant) {
         id = participant.getId();
         name = participant.getName();

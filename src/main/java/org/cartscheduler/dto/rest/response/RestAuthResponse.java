@@ -10,4 +10,5 @@ import lombok.NoArgsConstructor;
 public class RestAuthResponse {
     private String jwtToken;
     private Long expiresAt;
+    private Long scheduleId;
 }

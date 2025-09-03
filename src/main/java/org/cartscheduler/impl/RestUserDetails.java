@@ -10,6 +10,7 @@ import java.util.Collection;
 public class RestUserDetails implements UserDetails {
     private final String username;
     private final Long id;
+    private Long scheduleId = null;
 
     public RestUserDetails(Participant participant) {
         this.username = participant.getEmail();
@@ -53,5 +54,13 @@ public class RestUserDetails implements UserDetails {
 
     public Long getId() {
         return id;
+    }
+
+    public Long getScheduleId() {
+        return scheduleId;
+    }
+
+    public void setScheduleId(Long scheduleId) {
+        this.scheduleId = scheduleId;
     }
 }
