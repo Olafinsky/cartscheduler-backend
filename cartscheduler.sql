@@ -60,5 +60,19 @@ CREATE TABLE IF NOT EXISTS `participant_agents` (
 !-- TODO
 CREATE TABLE IF NOT EXISTS `proposals` (
     `id` INTEGER PRIMARY KEY NOT NULL AUTO_INCREMENT,
-    `schedule_entry_id` INTEGER NOT NULL
-)
+    `date_add` DATETIME NOT NULL,
+    `participant_id` INTEGER NOT NULL,
+    `pair_participant_id` INTEGER,
+    `inserting_participant_id` INTEGER,
+    `schedule_day_id` INTEGER NOT NULL,
+    `hour_start` TINYINT NOT NULL,
+    `hour_end` TINYINT NOT NULL,
+    `break_length_start` TINYINT,
+    `break_length_end` TINYINT,
+    `service_length_start` TINYINT,
+    `service_length_end` TINYINT,
+    FOREIGN KEY (`participant_id`) REFERENCES `participants`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`pair_participant_id`) REFERENCES `participants`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`inserting_participant_id`) REFERENCES `participants`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`schedule_day_id`) REFERENCES `schedule_days`(`id`) ON DELETE CASCADE
+);

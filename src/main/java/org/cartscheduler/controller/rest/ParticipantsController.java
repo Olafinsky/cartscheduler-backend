@@ -18,6 +18,6 @@ public class ParticipantsController {
 
     @GetMapping("/")
     public List<ParticipantDto> index(@AuthenticationPrincipal RestUserDetails userDetails) {
-        return participantService.prepareAssignedParticipantDtoListForAgentParticipantAndSchedule(userDetails.getId(), userDetails.getScheduleId());
+        return participantService.prepareAssignedParticipantsDto(userDetails.getId(), userDetails.getScheduleId());
     }
 }

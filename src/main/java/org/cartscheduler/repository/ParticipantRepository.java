@@ -11,5 +11,5 @@ public interface ParticipantRepository extends JpaRepository<Participant, Long> 
     Optional<Participant> findByEmail(String email);
 
     @Query("SELECT p FROM Participant p JOIN p.agentParticipants ap JOIN p.schedules s WHERE ap.id = ?1 AND s.id  = ?2")
-    List<Participant> findAssignedParticipantForAgentParticipantAndSchedule(Long participantId, Long scheduleId);
+    List<Participant> findAssignedParticipants(Long participantId, Long scheduleId);
 }
