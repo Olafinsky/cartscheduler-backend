@@ -16,7 +16,7 @@ public class ParticipantService {
 
     public List<ParticipantDto> prepareAssignedParticipantDtoListForAgentParticipantAndSchedule(Long participantId, Long scheduleId) {
         List<ParticipantDto> participants = new ArrayList<>();
-        for (Participant participant : participantRepository.findAssignedParticipantForAgentParticipantAndSchedule(participantId, scheduleId)) {
+        for (Participant participant : participantRepository.findAssignedParticipants(participantId, scheduleId)) {
             participants.add(new ParticipantDto(participant));
         }
         return participants;
