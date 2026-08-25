@@ -42,14 +42,69 @@ dependencies {
 
     // JUnit Jupiter, Mockito and AssertJ for unit tests.
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    // MVC/JWT security tests.
+    testImplementation 'org.springframework.security:spring-security-test'
+
+    // Isolated MySQL containers for integration and functional tests.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mysql'
+
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+def integrationTestSourceSet = sourceSets.create('integrationTest') {
+    java.srcDir 'src/integrationTest/java'
+    resources.srcDir 'src/integrationTest/resources'
+    compileClasspath += project.sourceSets.main.output
+    runtimeClasspath += project.sourceSets.main.output
+}
+
+def functionalTestSourceSet = sourceSets.create('functionalTest') {
+    java.srcDir 'src/functionalTest/java'
+    resources.srcDir 'src/functionalTest/resources'
+    compileClasspath += project.sourceSets.main.output
+    runtimeClasspath += project.sourceSets.main.output
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+    functionalTestImplementation.extendsFrom testImplementation
+    functionalTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
-tasks.named('test') {
+tasks.register('integrationTest', Test) {
+    description = 'Runs integration tests against Testcontainers-managed services.'
+    group = 'verification'
+    dependsOn tasks.named('integrationTestClasses')
+    testClassesDirs = integrationTestSourceSet.output.classesDirs
+    classpath = integrationTestSourceSet.runtimeClasspath
+    include '**/*IT.class'
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.register('functionalTest', Test) {
+    description = 'Runs functional API tests against the full application.'
+    group = 'verification'
+    dependsOn tasks.named('functionalTestClasses')
+    testClassesDirs = functionalTestSourceSet.output.classesDirs
+    classpath = functionalTestSourceSet.runtimeClasspath
+    include '**/*FunctionalTest.class'
+    shouldRunAfter tasks.named('integrationTest')
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('integrationTest')
+    dependsOn tasks.named('functionalTest')
+}
+
+tasks.withType(Test).configureEach {
     useJUnitPlatform()
 
     testLogging {

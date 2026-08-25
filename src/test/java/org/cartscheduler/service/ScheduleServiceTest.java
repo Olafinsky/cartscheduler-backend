@@ -15,6 +15,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.cartscheduler.support.TestEntityFactory.participant;
+import static org.cartscheduler.support.TestEntityFactory.schedule;
+import static org.cartscheduler.support.TestEntityFactory.user;
 
 @ExtendWith(MockitoExtension.class)
 class ScheduleServiceTest {
@@ -56,15 +60,46 @@ class ScheduleServiceTest {
         assertThat(hasAccess).isFalse();
     }
 
-    private RestUserDetails user(long participantId) {
-        return new RestUserDetails(participant(participantId));
+    @Test
+    void shouldMapAllSchedulesAccessibleToParticipant() {
+        given(scheduleRepository.findForParticipant(1L)).willReturn(List.of(
+                schedule(10L, "Morning", List.of()),
+                schedule(20L, "Evening", List.of())
+        ));
+
+        var schedules = scheduleService.prepareScheduleDtoListForParticipant(1L);
+
+        assertThat(schedules)
+                .extracting(dto -> dto.getId(), dto -> dto.getName())
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(10L, "Morning"),
+                        org.assertj.core.groups.Tuple.tuple(20L, "Evening")
+                );
     }
 
-    private Participant participant(long id) {
-        Participant participant = new Participant();
-        participant.setId(id);
-        participant.setName("Participant " + id);
-        participant.setEmail("participant" + id + "@example.test");
-        return participant;
+    @Test
+    void shouldReturnTheRequestedScheduleInsteadOfTheFirstAccessibleOne() {
+        given(scheduleRepository.findForParticipant(1L)).willReturn(List.of(
+                schedule(10L, "First", List.of()),
+                schedule(20L, "Requested", List.of())
+        ));
+
+        var result = scheduleService.prepareScheduleDtoForParticipant(1L, 20L);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(20L);
+        assertThat(result.getName()).isEqualTo("Requested");
+        verify(scheduleRepository).findForParticipant(1L);
+    }
+
+    @Test
+    void shouldReturnNullWhenParticipantCannotAccessRequestedSchedule() {
+        given(scheduleRepository.findForParticipant(1L)).willReturn(List.of(
+                schedule(10L, "Only schedule", List.of())
+        ));
+
+        var result = scheduleService.prepareScheduleDtoForParticipant(1L, 20L);
+
+        assertThat(result).isNull();
     }
 }

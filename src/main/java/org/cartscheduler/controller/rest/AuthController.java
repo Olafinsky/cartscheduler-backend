@@ -6,8 +6,9 @@ import org.cartscheduler.entity.ParticipantAccessToken;
 import org.cartscheduler.repository.ParticipantAccessTokenRepository;
 import org.cartscheduler.service.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -36,7 +37,7 @@ public class AuthController {
 
             return response;
         } else {
-            throw new UsernameNotFoundException("Invalid user request!");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired invitation token");
         }
     }
 }

@@ -7,12 +7,14 @@ import org.cartscheduler.impl.RestUserDetails;
 import org.cartscheduler.repository.ScheduleRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 @Service
+@Transactional(readOnly = true)
 public class ScheduleService {
 
     @Autowired
@@ -27,12 +29,12 @@ public class ScheduleService {
         return schedules;
     }
 
-    public ScheduleDto prepareScheduleDtoForParticipant(Long id, Long scheduleId) {
-        Schedule schedule = scheduleRepository.findForParticipant(id).getFirst();
-        if (schedule == null) {
-            return null;
-        }
-        return new ScheduleDto(schedule);
+    public ScheduleDto prepareScheduleDtoForParticipant(Long participantId, Long scheduleId) {
+        return scheduleRepository.findForParticipant(participantId).stream()
+                .filter(schedule -> schedule.getId() == scheduleId)
+                .findFirst()
+                .map(ScheduleDto::new)
+                .orElse(null);
     }
 
     public boolean checkScheduleAccess(RestUserDetails userDetails, long scheduleId) {
@@ -42,12 +44,12 @@ public class ScheduleService {
         }
 
         Schedule schedule = queryResult.get();
-        for (Participant participant : schedule.getAccessibleParticipants()) {
-            if (participant.getId() == userDetails.getId()) {
-                return true;
-            }
+        if (schedule.getAccessibleParticipants() == null) {
+            return false;
         }
-        return false;
+
+        return schedule.getAccessibleParticipants().stream()
+                .anyMatch(participant -> participant.getId() == userDetails.getId());
     }
 
 }

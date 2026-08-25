@@ -28,6 +28,10 @@ public class SchedulesController {
 
     @GetMapping("/{scheduleId}/")
     public ScheduleDto getSchedule(@AuthenticationPrincipal RestUserDetails userDetails, @PathVariable("scheduleId") Long id) {
+        if (!scheduleService.checkScheduleAccess(userDetails, id)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+
         return scheduleService.prepareScheduleDtoForParticipant(userDetails.getId(), id);
     }
 
@@ -37,7 +41,7 @@ public class SchedulesController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
-        return scheduleDayService.prepareScheduleDayDtoListForSchedule(userDetails.getId());
+        return scheduleDayService.prepareScheduleDayDtoListForSchedule(scheduleId);
     }
 
     @GetMapping("/{scheduleId}/days/{dayId}/")

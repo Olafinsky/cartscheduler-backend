@@ -41,3 +41,25 @@ Jeżeli baza została wcześniej utworzona przez dawny skrypt `cartscheduler.sql
 ```
 
 Domyślne wartości konfiguracji można nadpisać zmiennymi `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET` oraz `JWT_EXPIRATION`.
+
+## Testy
+
+| Rodzaj | Katalog | Konwencja nazwy | Polecenie |
+| --- | --- | --- | --- |
+| Jednostkowe | `src/test/java` | `*Test` | `.\gradlew.bat test` |
+| Integracyjne | `src/integrationTest/java` | `*IT` | `.\gradlew.bat integrationTest` |
+| Funkcjonalne API | `src/functionalTest/java` | `*FunctionalTest` | `.\gradlew.bat functionalTest` |
+
+Testy integracyjne i funkcjonalne używają Testcontainers z izolowanym MySQL, więc wymagają uruchomionego Docker Desktop. Nie korzystają z bazy uruchomionej przez `docker compose`. Polecenie `.\gradlew.bat check` uruchamia wszystkie trzy grupy testów.
+
+Przed uruchomieniem testów korzystających z Testcontainers sprawdź, czy demon Dockera działa:
+
+```powershell
+docker info
+```
+
+Zakres zestawu testów:
+
+- jednostkowe: JWT, filtr uwierzytelniania, serwisy, kontrolery oraz generator wpisów harmonogramu;
+- integracyjne: migracja Flyway, relacje JPA i własne zapytania repozytoriów na MySQL;
+- funkcjonalne: pełny przepływ HTTP — token zaproszenia, JWT, autoryzacja, harmonogramy, dni, uczestnicy i aktualnie niezaimplementowane propozycje (`501`).
