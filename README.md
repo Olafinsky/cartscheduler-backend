@@ -28,6 +28,23 @@ docker compose down -v
 
 Domyślne dane są przeznaczone wyłącznie do lokalnego uruchomienia. Aby ustawić własne, skopiuj `.env.example` do `.env` i zmień hasła oraz `JWT_SECRET` przed wdrożeniem.
 
+## Automatyczna przebudowa w DEV
+
+Do pracy nad backendem w Dockerze użyj trybu obserwowania plików:
+
+```powershell
+docker compose up --build --watch
+```
+
+Po zapisaniu zmiany w `src`, konfiguracji Gradle, wrapperze Gradle lub `Dockerfile`, Compose przebuduje obraz i odtworzy wyłącznie kontener `app`. Kontener i wolumen bazy danych nie są usuwane.
+
+Jeśli chcesz mieć logi aplikacji i obserwowanie plików w osobnych terminalach, uruchom:
+
+```powershell
+docker compose up -d --build
+docker compose watch app
+```
+
 ## Migracje bazy danych
 
 Schemat bazy jest zarządzany przez Flyway. Pierwsza migracja znajduje się w [V1__initial_schema.sql](src/main/resources/db/migration/V1__initial_schema.sql). Każdą następną zmianę schematu dodawaj jako nowy, wersjonowany plik, na przykład `V2__add_participant_phone.sql`.
