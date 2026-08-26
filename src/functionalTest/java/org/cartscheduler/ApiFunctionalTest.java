@@ -2,16 +2,19 @@ package org.cartscheduler;
 
 import org.cartscheduler.dto.rest.request.RestAuthRequest;
 import org.cartscheduler.dto.rest.response.ParticipantDto;
+import org.cartscheduler.dto.rest.response.ProposalDto;
 import org.cartscheduler.dto.rest.response.RestAuthResponse;
 import org.cartscheduler.dto.rest.response.ScheduleDayDto;
 import org.cartscheduler.dto.rest.response.ScheduleDto;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.ParticipantAccessToken;
+import org.cartscheduler.entity.Proposal;
 import org.cartscheduler.entity.Schedule;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
 import org.cartscheduler.repository.ParticipantAccessTokenRepository;
 import org.cartscheduler.repository.ParticipantRepository;
+import org.cartscheduler.repository.ProposalRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
 import org.cartscheduler.repository.ScheduleRepository;
@@ -71,6 +74,9 @@ class ApiFunctionalTest {
 
     @Autowired
     private ParticipantAccessTokenRepository participantAccessTokenRepository;
+
+    @Autowired
+    private ProposalRepository proposalRepository;
 
     @Autowired
     private ScheduleRepository scheduleRepository;
@@ -223,15 +229,29 @@ class ApiFunctionalTest {
     }
 
     @Test
-    void shouldReturnNotImplementedForProposalEndpointsAfterAuthorization() {
+    void shouldReturnProposalsAssignedToParticipantAndNotImplementedForDeletion() {
         Fixture fixture = seedFixture();
+        Proposal expectedProposal = saveProposal(
+                fixture.assignedParticipant(),
+                fixture.agent(),
+                fixture.scheduleDay(),
+                (short) 8,
+                (short) 12
+        );
+        saveProposal(
+                fixture.outsider(),
+                fixture.agent(),
+                fixture.scheduleDay(),
+                (short) 13,
+                (short) 15
+        );
         String jwt = authenticate(fixture.invitationToken()).getJwtToken();
 
-        ResponseEntity<String> listResponse = restTemplate.exchange(
+        ResponseEntity<ProposalDto[]> listResponse = restTemplate.exchange(
                 "/api/proposals/schedule-day/{scheduleDayId}/participant/{participantId}",
                 HttpMethod.GET,
                 authorizedRequest(jwt),
-                String.class,
+                ProposalDto[].class,
                 fixture.scheduleDay().getId(),
                 fixture.assignedParticipant().getId()
         );
@@ -243,7 +263,25 @@ class ApiFunctionalTest {
                 999L
         );
 
-        assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED);
+        assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listResponse.getBody()).isNotNull();
+        assertThat(listResponse.getBody())
+                .extracting(
+                        ProposalDto::getId,
+                        ProposalDto::getParticipantId,
+                        ProposalDto::getInsertingParticipantId,
+                        ProposalDto::getScheduleDayId,
+                        ProposalDto::getHourStart,
+                        ProposalDto::getHourEnd
+                )
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(
+                        expectedProposal.getId(),
+                        fixture.assignedParticipant().getId(),
+                        fixture.agent().getId(),
+                        fixture.scheduleDay().getId(),
+                        8,
+                        12
+                ));
         assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED);
     }
 
@@ -290,6 +328,23 @@ class ApiFunctionalTest {
         entry.setName(name);
         entry.setHour(hour);
         scheduleEntryRepository.saveAndFlush(entry);
+    }
+
+    private Proposal saveProposal(
+            Participant participant,
+            Participant insertingParticipant,
+            ScheduleDay scheduleDay,
+            short hourStart,
+            short hourEnd
+    ) {
+        Proposal proposal = new Proposal();
+        proposal.setDateAdd(Date.from(Instant.now()));
+        proposal.setParticipant(participant);
+        proposal.setInsertingParticipant(insertingParticipant);
+        proposal.setScheduleDay(scheduleDay);
+        proposal.setHourStart(hourStart);
+        proposal.setHourEnd(hourEnd);
+        return proposalRepository.saveAndFlush(proposal);
     }
 
     private void saveAccessToken(String token, Participant participant, Schedule schedule, Instant expiresAt) {

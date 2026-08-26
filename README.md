@@ -79,4 +79,4 @@ Zakres zestawu testów:
 
 - jednostkowe: JWT, filtr uwierzytelniania, serwisy, kontrolery oraz generator wpisów harmonogramu;
 - integracyjne: migracja Flyway, relacje JPA i własne zapytania repozytoriów na MySQL;
-- funkcjonalne: pełny przepływ HTTP — token zaproszenia, JWT, autoryzacja, harmonogramy, dni, uczestnicy i aktualnie niezaimplementowane propozycje (`501`).
+- funkcjonalne: pełny przepływ HTTP — token zaproszenia, JWT, autoryzacja, harmonogramy, dni, uczestnicy, pobieranie propozycji oraz aktualnie niezaimplementowane usuwanie propozycji (`501`).

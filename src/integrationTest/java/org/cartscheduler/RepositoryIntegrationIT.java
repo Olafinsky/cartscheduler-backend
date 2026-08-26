@@ -3,11 +3,13 @@ package org.cartscheduler;
 import jakarta.persistence.EntityManager;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.ParticipantAccessToken;
+import org.cartscheduler.entity.Proposal;
 import org.cartscheduler.entity.Schedule;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
 import org.cartscheduler.repository.ParticipantAccessTokenRepository;
 import org.cartscheduler.repository.ParticipantRepository;
+import org.cartscheduler.repository.ProposalRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
 import org.cartscheduler.repository.ScheduleRepository;
@@ -59,6 +61,9 @@ class RepositoryIntegrationIT {
 
     @Autowired
     private ParticipantAccessTokenRepository participantAccessTokenRepository;
+
+    @Autowired
+    private ProposalRepository proposalRepository;
 
     @Autowired
     private ScheduleRepository scheduleRepository;
@@ -166,6 +171,30 @@ class RepositoryIntegrationIT {
     }
 
     @Test
+    void shouldFindOnlyProposalsAssignedToParticipantForRequestedScheduleDay() {
+        Participant author = saveParticipant("author@example.test");
+        Participant targetParticipant = saveParticipant("target@example.test");
+        Participant anotherTargetParticipant = saveParticipant("another-target@example.test");
+        Schedule schedule = saveSchedule("Main schedule", author, targetParticipant);
+        ScheduleDay requestedDay = saveScheduleDay(schedule, "Monday", (short) 1);
+        ScheduleDay anotherDay = saveScheduleDay(schedule, "Tuesday", (short) 2);
+        Proposal firstProposal = saveProposal(targetParticipant, author, requestedDay, (short) 8, (short) 10);
+        Proposal secondProposal = saveProposal(targetParticipant, author, requestedDay, (short) 12, (short) 14);
+        saveProposal(anotherTargetParticipant, author, requestedDay, (short) 9, (short) 11);
+        saveProposal(targetParticipant, author, anotherDay, (short) 15, (short) 17);
+        entityManager.clear();
+
+        List<Proposal> result = proposalRepository.findForParticipantAndScheduleDay(
+                targetParticipant.getId(),
+                requestedDay.getId()
+        );
+
+        assertThat(result)
+                .extracting(Proposal::getId)
+                .containsExactly(firstProposal.getId(), secondProposal.getId());
+    }
+
+    @Test
     void shouldReturnOnlyActiveInvitationTokenWithParticipantAndScheduleLoaded() {
         Participant participant = saveParticipant("participant@example.test");
         Schedule schedule = saveSchedule("Main schedule", participant);
@@ -218,6 +247,23 @@ class RepositoryIntegrationIT {
         entry.setName(name);
         entry.setHour(hour);
         scheduleEntryRepository.saveAndFlush(entry);
+    }
+
+    private Proposal saveProposal(
+            Participant participant,
+            Participant insertingParticipant,
+            ScheduleDay scheduleDay,
+            short hourStart,
+            short hourEnd
+    ) {
+        Proposal proposal = new Proposal();
+        proposal.setDateAdd(Date.from(Instant.now()));
+        proposal.setParticipant(participant);
+        proposal.setInsertingParticipant(insertingParticipant);
+        proposal.setScheduleDay(scheduleDay);
+        proposal.setHourStart(hourStart);
+        proposal.setHourEnd(hourEnd);
+        return proposalRepository.saveAndFlush(proposal);
     }
 
     private ParticipantAccessToken saveAccessToken(
