@@ -39,12 +39,12 @@ class SchedulesControllerTest {
         RestUserDetails principal = user(1L);
         ScheduleDto expected = new ScheduleDto(5L, "Main schedule");
         given(scheduleService.checkScheduleAccess(principal, 5L)).willReturn(true);
-        given(scheduleService.prepareScheduleDtoForParticipant(1L, 5L)).willReturn(expected);
+        given(scheduleService.prepareScheduleDtoForSchedule(5L)).willReturn(expected);
 
         var result = schedulesController.getSchedule(principal, 5L);
 
         assertThat(result).isSameAs(expected);
-        verify(scheduleService).prepareScheduleDtoForParticipant(1L, 5L);
+        verify(scheduleService).prepareScheduleDtoForSchedule(5L);
     }
 
     @Test

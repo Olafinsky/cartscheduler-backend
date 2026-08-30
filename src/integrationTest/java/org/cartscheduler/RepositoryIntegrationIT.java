@@ -114,10 +114,46 @@ class RepositoryIntegrationIT {
         entityManager.clear();
 
         List<Participant> result = participantRepository.findAssignedParticipants(agent.getId(), schedule.getId());
+        long assignedParticipantCount = participantRepository.countAssignedParticipantsForAgentAndSchedule(
+                agent.getId(),
+                schedule.getId()
+        );
+        long targetParticipantCount = participantRepository.countAssignedParticipantForAgentAndSchedule(
+                agent.getId(),
+                assignedInSchedule.getId(),
+                schedule.getId()
+        );
+        long outsideParticipantCount = participantRepository.countAssignedParticipantForAgentAndSchedule(
+                agent.getId(),
+                assignedOutsideSchedule.getId(),
+                schedule.getId()
+        );
 
         assertThat(result)
                 .extracting(Participant::getId)
                 .containsExactly(assignedInSchedule.getId());
+        assertThat(assignedParticipantCount).isEqualTo(1L);
+        assertThat(targetParticipantCount).isEqualTo(1L);
+        assertThat(outsideParticipantCount).isZero();
+    }
+
+    @Test
+    void shouldFindSchedulesReachableByAgentThroughAssignedParticipants() {
+        Participant agent = saveParticipant("agent@example.test");
+        Participant assignedParticipant = saveParticipant("assigned@example.test");
+        Participant unrelatedParticipant = saveParticipant("unrelated@example.test");
+        Schedule reachableSchedule = saveSchedule("Reachable", assignedParticipant);
+        saveSchedule("Not reachable", unrelatedParticipant);
+
+        agent.setAssignedParticipants(new ArrayList<>(List.of(assignedParticipant)));
+        participantRepository.saveAndFlush(agent);
+        entityManager.clear();
+
+        List<Schedule> result = scheduleRepository.findForAgent(agent.getId());
+
+        assertThat(result)
+                .extracting(Schedule::getId)
+                .containsExactly(reachableSchedule.getId());
     }
 
     @Test

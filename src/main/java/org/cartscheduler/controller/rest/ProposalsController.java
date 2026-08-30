@@ -1,5 +1,7 @@
 package org.cartscheduler.controller.rest;
 
+import jakarta.validation.Valid;
+import org.cartscheduler.dto.rest.request.CreateProposalRequest;
 import org.cartscheduler.dto.rest.response.ProposalDto;
 import org.cartscheduler.impl.RestUserDetails;
 import org.cartscheduler.service.ProposalService;
@@ -22,13 +24,31 @@ public class ProposalsController {
     @Autowired
     ScheduleService scheduleService;
 
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProposalDto create(
+            @AuthenticationPrincipal RestUserDetails userDetails,
+            @Valid @RequestBody CreateProposalRequest request
+    ) {
+        if (!scheduleService.checkScheduleAccess(userDetails, userDetails.getScheduleId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+
+        return proposalService.createProposal(request, userDetails.getId(), userDetails.getScheduleId());
+    }
+
     @GetMapping("/schedule-day/{scheduleDayId}/participant/{participantId}")
     public List<ProposalDto> index(@AuthenticationPrincipal RestUserDetails userDetails, @PathVariable("scheduleDayId") Long scheduleDayId, @PathVariable("participantId") Long participantId) {
         if (!scheduleService.checkScheduleAccess(userDetails, userDetails.getScheduleId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
-        return proposalService.prepareProposalDto(participantId, scheduleDayId);
+        return proposalService.prepareProposalDto(
+                participantId,
+                scheduleDayId,
+                userDetails.getId(),
+                userDetails.getScheduleId()
+        );
     }
 
     @DeleteMapping("/{id}")

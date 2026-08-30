@@ -12,4 +12,5 @@ public interface ScheduleDayRepository extends JpaRepository<ScheduleDay, Long> 
 
     @Query("SELECT sd FROM ScheduleDay sd WHERE sd.id = ?1 AND sd.schedule.id = ?2")
     ScheduleDay findByIdForSchedule(Long id, Long scheduleId);
+
 }

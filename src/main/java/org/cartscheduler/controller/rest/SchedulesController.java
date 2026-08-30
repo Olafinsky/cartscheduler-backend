@@ -32,7 +32,7 @@ public class SchedulesController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
-        return scheduleService.prepareScheduleDtoForParticipant(userDetails.getId(), id);
+        return scheduleService.prepareScheduleDtoForSchedule(id);
     }
 
     @GetMapping("/{scheduleId}/days/")

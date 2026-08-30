@@ -1,5 +1,6 @@
 package org.cartscheduler.controller.rest;
 
+import org.cartscheduler.dto.rest.request.CreateProposalRequest;
 import org.cartscheduler.dto.rest.response.ProposalDto;
 import org.cartscheduler.impl.RestUserDetails;
 import org.cartscheduler.service.ProposalService;
@@ -34,17 +35,47 @@ class ProposalsControllerTest {
     private ProposalsController proposalsController;
 
     @Test
+    void shouldDelegateProposalCreationWhenPrincipalHasAccessToTokenSchedule() {
+        RestUserDetails principal = user(1L);
+        principal.setScheduleId(5L);
+        CreateProposalRequest request = new CreateProposalRequest(2L, 10L, 7, 15, 4, 6, null, null);
+        ProposalDto expected = new ProposalDto();
+        given(scheduleService.checkScheduleAccess(principal, 5L)).willReturn(true);
+        given(proposalService.createProposal(request, 1L, 5L)).willReturn(expected);
+
+        ProposalDto result = proposalsController.create(principal, request);
+
+        assertThat(result).isSameAs(expected);
+        verify(proposalService).createProposal(request, 1L, 5L);
+    }
+
+    @Test
+    void shouldForbidProposalCreationWhenPrincipalHasNoScheduleAccess() {
+        RestUserDetails principal = user(1L);
+        principal.setScheduleId(5L);
+        CreateProposalRequest request = new CreateProposalRequest(2L, 10L, 7, 15, 4, 6, null, null);
+        given(scheduleService.checkScheduleAccess(principal, 5L)).willReturn(false);
+
+        assertThatThrownBy(() -> proposalsController.create(principal, request))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(exception -> assertThat(((ResponseStatusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+
+        verifyNoInteractions(proposalService);
+    }
+
+    @Test
     void shouldDelegateProposalListingWhenPrincipalHasAccessToTokenSchedule() {
         RestUserDetails principal = user(1L);
         principal.setScheduleId(5L);
         List<ProposalDto> expected = List.of();
         given(scheduleService.checkScheduleAccess(principal, 5L)).willReturn(true);
-        given(proposalService.prepareProposalDto(2L, 10L)).willReturn(expected);
+        given(proposalService.prepareProposalDto(2L, 10L, 1L, 5L)).willReturn(expected);
 
         var result = proposalsController.index(principal, 10L, 2L);
 
         assertThat(result).isSameAs(expected);
-        verify(proposalService).prepareProposalDto(2L, 10L);
+        verify(proposalService).prepareProposalDto(2L, 10L, 1L, 5L);
     }
 
     @Test
