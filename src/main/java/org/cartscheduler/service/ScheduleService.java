@@ -1,53 +1,46 @@
 package org.cartscheduler.service;
 
 import org.cartscheduler.dto.rest.response.ScheduleDto;
-import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.Schedule;
 import org.cartscheduler.impl.RestUserDetails;
+import org.cartscheduler.repository.ParticipantRepository;
 import org.cartscheduler.repository.ScheduleRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Service
+@Transactional(readOnly = true)
 public class ScheduleService {
 
     @Autowired
     private ScheduleRepository scheduleRepository;
 
+    @Autowired
+    private ParticipantRepository participantRepository;
 
-    public List<ScheduleDto> prepareScheduleDtoListForParticipant(Long id) {
+    public List<ScheduleDto> prepareScheduleDtoListForAgentParticipant(Long agentParticipantId) {
         List<ScheduleDto> schedules = new ArrayList<>();
-        for (Schedule schedule : scheduleRepository.findForParticipant(id)) {
+        for (Schedule schedule : scheduleRepository.findForAgent(agentParticipantId)) {
             schedules.add(new ScheduleDto(schedule));
         }
         return schedules;
     }
 
-    public ScheduleDto prepareScheduleDtoForParticipant(Long id, Long scheduleId) {
-        Schedule schedule = scheduleRepository.findForParticipant(id).getFirst();
-        if (schedule == null) {
-            return null;
-        }
-        return new ScheduleDto(schedule);
+    public ScheduleDto prepareScheduleDtoForSchedule(Long scheduleId) {
+        return scheduleRepository.findById(scheduleId)
+                .map(ScheduleDto::new)
+                .orElse(null);
     }
 
     public boolean checkScheduleAccess(RestUserDetails userDetails, long scheduleId) {
-        Optional<Schedule> queryResult = scheduleRepository.findById(scheduleId);
-        if (queryResult.isEmpty()) {
-            return false;
-        }
-
-        Schedule schedule = queryResult.get();
-        for (Participant participant : schedule.getAccessibleParticipants()) {
-            if (participant.getId() == userDetails.getId()) {
-                return true;
-            }
-        }
-        return false;
+        return participantRepository.countAssignedParticipantsForAgentAndSchedule(
+                userDetails.getId(),
+                scheduleId
+        ) > 0;
     }
 
 }

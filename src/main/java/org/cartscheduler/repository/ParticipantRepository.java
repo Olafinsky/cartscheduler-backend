@@ -12,4 +12,20 @@ public interface ParticipantRepository extends JpaRepository<Participant, Long> 
 
     @Query("SELECT p FROM Participant p JOIN p.agentParticipants ap JOIN p.schedules s WHERE ap.id = ?1 AND s.id  = ?2")
     List<Participant> findAssignedParticipants(Long participantId, Long scheduleId);
+
+    @Query("SELECT COUNT(participant) FROM Participant participant " +
+            "JOIN participant.agentParticipants agent " +
+            "JOIN participant.schedules schedule " +
+            "WHERE agent.id = ?1 AND schedule.id = ?2")
+    long countAssignedParticipantsForAgentAndSchedule(Long agentParticipantId, Long scheduleId);
+
+    @Query("SELECT COUNT(participant) FROM Participant participant " +
+            "JOIN participant.agentParticipants agent " +
+            "JOIN participant.schedules schedule " +
+            "WHERE agent.id = ?1 AND participant.id = ?2 AND schedule.id = ?3")
+    long countAssignedParticipantForAgentAndSchedule(
+            Long agentParticipantId,
+            Long assignedParticipantId,
+            Long scheduleId
+    );
 }

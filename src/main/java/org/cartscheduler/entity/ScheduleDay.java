@@ -35,5 +35,6 @@ public class ScheduleDay {
     private String name;
 
     @OneToMany(mappedBy = "scheduleDay")
+    @OrderBy("hour ASC")
     private List<ScheduleEntry> scheduleEntries;
 }

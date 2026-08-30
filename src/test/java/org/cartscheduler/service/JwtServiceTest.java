@@ -3,12 +3,15 @@ package org.cartscheduler.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import io.jsonwebtoken.JwtException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.cartscheduler.support.TestEntityFactory.user;
 
 public class JwtServiceTest {
 
@@ -49,5 +52,48 @@ public class JwtServiceTest {
         assertThat(decodedUsername).isEqualTo(username);
         assertThat(actualExpirySecond).isBetween(expectedMinimumExpirySecond, expectedMaximumExpirySecond);
         assertThat(decodedScheduleId).isEqualTo(scheduleId);
+    }
+
+    @Test
+    void shouldValidateTokenOnlyForParticipantWithMatchingEmail() {
+        String token = jwtService.generateToken("participant1@example.test", 5L);
+
+        boolean result = jwtService.validateToken(token, user(1L));
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void shouldRejectTokenForParticipantWithDifferentEmail() {
+        String token = jwtService.generateToken("participant1@example.test", 5L);
+
+        boolean result = jwtService.validateToken(token, user(2L));
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void shouldRejectExpiredToken() {
+        ReflectionTestUtils.setField(jwtService, "expiration", -1L);
+        String token = jwtService.generateToken("participant1@example.test", 5L);
+
+        boolean result = jwtService.validateToken(token, user(1L));
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void shouldRejectTokenSignedWithDifferentSecret() {
+        JwtService otherJwtService = new JwtService();
+        String otherSecret = Base64.getEncoder().encodeToString(
+                "another-secret-that-is-long-enough-for-hs256-signing"
+                        .getBytes(StandardCharsets.UTF_8)
+        );
+        ReflectionTestUtils.setField(otherJwtService, "secret", otherSecret);
+        ReflectionTestUtils.setField(otherJwtService, "expiration", EXPIRATION);
+        String token = otherJwtService.generateToken("participant1@example.test", 5L);
+
+        assertThatThrownBy(() -> jwtService.extractUsername(token))
+                .isInstanceOf(JwtException.class);
     }
 }

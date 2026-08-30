@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import io.jsonwebtoken.JwtException;
 import org.cartscheduler.impl.RestUserDetails;
 import org.cartscheduler.service.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -31,23 +33,34 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String authHeader = request.getHeader("Authorization");
         String token = null;
         String username = null;
-        Integer scheduleId = null;
+        Long scheduleId = null;
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7);
-            username = jwtService.extractUsername(token);
-            scheduleId = (Integer) jwtService.extractClaim(token, (c) -> c.get("schedule_id"));
+            try {
+                username = jwtService.extractUsername(token);
+                Object scheduleIdClaim = jwtService.extractClaim(token, claims -> claims.get("schedule_id"));
+                if (scheduleIdClaim instanceof Number number) {
+                    scheduleId = number.longValue();
+                }
+            } catch (JwtException | IllegalArgumentException ignored) {
+                // An invalid JWT is treated as an unauthenticated request.
+            }
         }
 
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            RestUserDetails userDetails = (RestUserDetails) userDetailsService.loadUserByUsername(username);
-            userDetails.setScheduleId(Long.valueOf(scheduleId));
-            if (jwtService.validateToken(token, userDetails)) {
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities());
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+        if (username != null && scheduleId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            try {
+                RestUserDetails userDetails = (RestUserDetails) userDetailsService.loadUserByUsername(username);
+                userDetails.setScheduleId(scheduleId);
+                if (jwtService.validateToken(token, userDetails)) {
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities());
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
+            } catch (UsernameNotFoundException ignored) {
+                // A token for a removed participant must not authenticate the request.
             }
         }
         filterChain.doFilter(request, response);

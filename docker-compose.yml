@@ -21,6 +21,22 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src
+        - action: rebuild
+          path: ./build.gradle
+        - action: rebuild
+          path: ./settings.gradle
+        - action: rebuild
+          path: ./gradle.properties
+        - action: rebuild
+          path: ./gradle
+        - action: rebuild
+          path: ./gradlew
+        - action: rebuild
+          path: ./Dockerfile
     depends_on:
       database:
         condition: service_healthy
