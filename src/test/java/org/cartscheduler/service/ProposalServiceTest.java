@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.cartscheduler.support.TestEntityFactory.participant;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -270,11 +271,48 @@ class ProposalServiceTest {
     }
 
     @Test
-    void shouldExplicitlyReportThatDeletingProposalIsNotImplemented() {
-        assertThatThrownBy(() -> proposalService.delete(1L))
+    void shouldDeleteProposalWhenAuthenticatedParticipantIsAgentOfTargetParticipant() {
+        Proposal proposal = proposal(10L, 2L, 3L, 1L, 10L);
+        given(proposalRepository.findById(10L)).willReturn(Optional.of(proposal));
+        given(scheduleDayRepository.findByIdForSchedule(10L, 5L)).willReturn(scheduleDay(10L));
+        given(participantRepository.countAssignedParticipantForAgentAndSchedule(1L, 2L, 5L)).willReturn(1L);
+
+        proposalService.delete(10L, 1L, 5L);
+
+        verify(proposalRepository).delete(proposal);
+    }
+
+    @Test
+    void shouldForbidDeletingProposalWhenAuthenticatedParticipantIsNotAgentOfTargetParticipant() {
+        Proposal proposal = proposal(10L, 2L, 3L, 1L, 10L);
+        given(proposalRepository.findById(10L)).willReturn(Optional.of(proposal));
+        given(scheduleDayRepository.findByIdForSchedule(10L, 5L)).willReturn(scheduleDay(10L));
+        given(participantRepository.countAssignedParticipantForAgentAndSchedule(1L, 2L, 5L)).willReturn(0L);
+
+        assertForbidden(() -> proposalService.delete(10L, 1L, 5L));
+
+        verify(proposalRepository, never()).delete(any(Proposal.class));
+    }
+
+    @Test
+    void shouldForbidDeletingProposalOutsideScheduleFromToken() {
+        Proposal proposal = proposal(10L, 2L, 3L, 1L, 10L);
+        given(proposalRepository.findById(10L)).willReturn(Optional.of(proposal));
+        given(scheduleDayRepository.findByIdForSchedule(10L, 5L)).willReturn(null);
+
+        assertForbidden(() -> proposalService.delete(10L, 1L, 5L));
+
+        verify(proposalRepository, never()).delete(any(Proposal.class));
+    }
+
+    @Test
+    void shouldReturnNotFoundWhenDeletingUnknownProposal() {
+        given(proposalRepository.findById(10L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> proposalService.delete(10L, 1L, 5L))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(exception -> assertThat(((ResponseStatusException) exception).getStatusCode())
-                        .isEqualTo(HttpStatus.NOT_IMPLEMENTED));
+                        .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     private void stubValidCreate(CreateProposalRequest request, ScheduleDay scheduleDay) {

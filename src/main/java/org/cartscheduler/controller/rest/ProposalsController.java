@@ -59,6 +59,6 @@ public class ProposalsController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
-        proposalService.delete(id);
+        proposalService.delete(id, userDetails.getId(), userDetails.getScheduleId());
     }
 }

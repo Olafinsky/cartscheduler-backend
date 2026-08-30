@@ -83,8 +83,18 @@ public class ProposalService {
         return new ProposalDto(proposalRepository.saveAndFlush(proposal));
     }
 
-    public void delete(Long id) {
-        throw notImplemented();
+    @Transactional
+    public void delete(Long id, Long deletingParticipantId, Long scheduleIdFromToken) {
+        Proposal proposal = proposalRepository.findById(id)
+                .orElseThrow(() -> notFound("Proposal does not exist"));
+        findScheduleDayForToken(proposal.getScheduleDay().getId(), scheduleIdFromToken);
+        assertAgentCanManageParticipant(
+                deletingParticipantId,
+                proposal.getParticipant().getId(),
+                scheduleIdFromToken
+        );
+
+        proposalRepository.delete(proposal);
     }
 
     private ScheduleDay findScheduleDayForToken(Long scheduleDayId, Long scheduleIdFromToken) {
@@ -164,7 +174,7 @@ public class ProposalService {
         return new ResponseStatusException(HttpStatus.FORBIDDEN, reason);
     }
 
-    private ResponseStatusException notImplemented() {
-        return new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "Proposal support has not been implemented yet");
+    private ResponseStatusException notFound(String reason) {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, reason);
     }
 }

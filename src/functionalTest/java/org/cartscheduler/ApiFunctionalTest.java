@@ -258,7 +258,7 @@ class ApiFunctionalTest {
     }
 
     @Test
-    void shouldReturnProposalsAssignedToParticipantAndNotImplementedForDeletion() {
+    void shouldReturnProposalsAssignedToParticipantAndDeleteAuthorizedProposal() {
         Fixture fixture = seedFixture();
         Proposal expectedProposal = saveProposal(
                 fixture.assignedParticipant(),
@@ -297,7 +297,7 @@ class ApiFunctionalTest {
                 HttpMethod.DELETE,
                 authorizedRequest(jwt),
                 String.class,
-                999L
+                expectedProposal.getId()
         );
 
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -319,8 +319,33 @@ class ApiFunctionalTest {
                         8,
                         12
                 ));
-        assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED);
+        assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(proposalRepository.existsById(expectedProposal.getId())).isFalse();
         assertThat(forbiddenListResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void shouldForbidDeletingProposalForParticipantNotAssignedToAuthenticatedAgent() {
+        Fixture fixture = seedFixture();
+        Proposal proposal = saveProposal(
+                fixture.directlyScheduledParticipant(),
+                fixture.agent(),
+                fixture.scheduleDay(),
+                (short) 13,
+                (short) 15
+        );
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/proposals/{proposalId}",
+                HttpMethod.DELETE,
+                authorizedRequest(jwt),
+                String.class,
+                proposal.getId()
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(proposalRepository.existsById(proposal.getId())).isTrue();
     }
 
     @Test

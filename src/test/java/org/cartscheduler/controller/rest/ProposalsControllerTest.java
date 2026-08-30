@@ -99,6 +99,20 @@ class ProposalsControllerTest {
 
         proposalsController.delete(principal, 10L);
 
-        verify(proposalService).delete(10L);
+        verify(proposalService).delete(10L, 1L, 5L);
+    }
+
+    @Test
+    void shouldForbidProposalDeletionWhenPrincipalHasNoScheduleAccess() {
+        RestUserDetails principal = user(1L);
+        principal.setScheduleId(5L);
+        given(scheduleService.checkScheduleAccess(principal, 5L)).willReturn(false);
+
+        assertThatThrownBy(() -> proposalsController.delete(principal, 10L))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(exception -> assertThat(((ResponseStatusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+
+        verifyNoInteractions(proposalService);
     }
 }
