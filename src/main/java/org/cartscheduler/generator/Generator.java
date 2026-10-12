@@ -64,6 +64,9 @@ public class Generator {
 
         SubSheet subSheet = sheet.getSubSheets().get(subSheetIndex);
         int cellCount = subSheet.getCells().size();
+        if (cellCount == 0) {
+            return;
+        }
         int caret = cellCount - 1;
 
         LinkedHashMap<Integer, List<Candidate>> candidateMap = new LinkedHashMap<>();
@@ -78,7 +81,10 @@ public class Generator {
             // Initial run - finding candidates for cell and setting first if available
             if (isInitialRun) {
                 for (int a = 0; a < cellCount; a++) {
-                    List<Candidate> options = getAvailableCandidateOptions(sheet, subSheet, subSheet.getCells().get(a));
+                    Cell cell = subSheet.getCells().get(a);
+                    List<Candidate> options = cell.isFixed()
+                        ? List.of(cell.getCandidate())
+                        : getAvailableCandidateOptions(sheet, subSheet, cell);
 
                     candidateMap.put(a, options);
                     candidateChoices.put(a, 0);
@@ -123,7 +129,10 @@ public class Generator {
 
                     // Candidate changed - next cells have to be reset
                     for (int j = i + 1; j < cellCount; j++) {
-                        List<Candidate> options = getAvailableCandidateOptions(sheet, subSheet, subSheet.getCells().get(j));
+                        Cell cell = subSheet.getCells().get(j);
+                        List<Candidate> options = cell.isFixed()
+                            ? List.of(cell.getCandidate())
+                            : getAvailableCandidateOptions(sheet, subSheet, cell);
 
                         candidateMap.put(j, options);
                         candidateChoices.put(j, 0);
@@ -151,6 +160,9 @@ public class Generator {
 
         } while (!isCompleted);
 
+        if (best.subSheet == null) {
+            throw new IllegalStateException("No assignment satisfies the configured generator constraints");
+        }
         sheet.getSubSheets().set(subSheetIndex, best.subSheet);
     }
 
@@ -214,7 +226,9 @@ public class Generator {
 
     private void clearCandidatesAfter(SubSheet subSheet, int cellIndex, BestResult best) {
         for (int i = cellIndex + 1; i < subSheet.getCells().size(); i++) {
-            setCandidateAndUpdateBest(subSheet, i, null, best);
+            if (!subSheet.getCells().get(i).isFixed()) {
+                setCandidateAndUpdateBest(subSheet, i, null, best);
+            }
         }
     }
 }

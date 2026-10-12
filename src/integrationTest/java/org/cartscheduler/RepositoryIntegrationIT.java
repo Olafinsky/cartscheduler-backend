@@ -4,15 +4,19 @@ import jakarta.persistence.EntityManager;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.ParticipantAccessToken;
 import org.cartscheduler.entity.Proposal;
+import org.cartscheduler.entity.ConfigRowFullOrEmptyScore;
 import org.cartscheduler.entity.Schedule;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
 import org.cartscheduler.repository.ParticipantAccessTokenRepository;
 import org.cartscheduler.repository.ParticipantRepository;
 import org.cartscheduler.repository.ProposalRepository;
+import org.cartscheduler.repository.ConfigRowFullOrEmptyScoreRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
 import org.cartscheduler.repository.ScheduleRepository;
+import org.cartscheduler.service.ScheduleGenerationResult;
+import org.cartscheduler.service.ScheduleGenerationService;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,6 +77,12 @@ class RepositoryIntegrationIT {
 
     @Autowired
     private ScheduleEntryRepository scheduleEntryRepository;
+
+    @Autowired
+    private ConfigRowFullOrEmptyScoreRepository rowFullOrEmptyScoreRepository;
+
+    @Autowired
+    private ScheduleGenerationService scheduleGenerationService;
 
     @Test
     void shouldApplyInitialFlywayMigrationToIsolatedMySqlDatabase() {
@@ -231,6 +241,32 @@ class RepositoryIntegrationIT {
     }
 
     @Test
+    void shouldGenerateAndPersistParticipantsFromProposals() {
+        Participant firstParticipant = saveParticipant("first-generator@example.test");
+        Participant secondParticipant = saveParticipant("second-generator@example.test");
+        Schedule schedule = saveSchedule("Generator schedule", firstParticipant, secondParticipant);
+        ScheduleDay day = saveScheduleDay(schedule, "Monday", (short) 1);
+        ScheduleEntry entry = saveScheduleEntry(day, "08:00", (short) 8);
+        saveProposal(firstParticipant, firstParticipant, day, (short) 8, (short) 8);
+        saveProposal(secondParticipant, secondParticipant, day, (short) 8, (short) 8);
+        ConfigRowFullOrEmptyScore rowScore = new ConfigRowFullOrEmptyScore();
+        rowScore.setEmptyRowPoints(0);
+        rowScore.setFullRowAdjacentToIncompletePoints(10);
+        rowScore.setFullRowNotAdjacentToIncompletePoints(10);
+        rowFullOrEmptyScoreRepository.saveAndFlush(rowScore);
+        entityManager.clear();
+
+        ScheduleGenerationResult result = scheduleGenerationService.generate(schedule.getId());
+        entityManager.flush();
+        entityManager.clear();
+
+        ScheduleEntry persistedEntry = scheduleEntryRepository.findById(entry.getId()).orElseThrow();
+        assertThat(result.assignedParticipantCells()).isEqualTo(2);
+        assertThat(persistedEntry.getParticipant1().getId()).isEqualTo(firstParticipant.getId());
+        assertThat(persistedEntry.getParticipant2().getId()).isEqualTo(secondParticipant.getId());
+    }
+
+    @Test
     void shouldReturnOnlyActiveInvitationTokenWithParticipantAndScheduleLoaded() {
         Participant participant = saveParticipant("participant@example.test");
         Schedule schedule = saveSchedule("Main schedule", participant);
@@ -277,12 +313,12 @@ class RepositoryIntegrationIT {
         return scheduleDayRepository.saveAndFlush(scheduleDay);
     }
 
-    private void saveScheduleEntry(ScheduleDay scheduleDay, String name, short hour) {
+    private ScheduleEntry saveScheduleEntry(ScheduleDay scheduleDay, String name, short hour) {
         ScheduleEntry entry = new ScheduleEntry();
         entry.setScheduleDay(scheduleDay);
         entry.setName(name);
         entry.setHour(hour);
-        scheduleEntryRepository.saveAndFlush(entry);
+        return scheduleEntryRepository.saveAndFlush(entry);
     }
 
     private Proposal saveProposal(

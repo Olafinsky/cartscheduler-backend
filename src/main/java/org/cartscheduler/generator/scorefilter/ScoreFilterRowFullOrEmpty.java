@@ -7,6 +7,20 @@ import org.cartscheduler.generator.Sheet;
 import org.cartscheduler.generator.SubSheet;
 
 public class ScoreFilterRowFullOrEmpty implements ScoreFilter {
+    private final int emptyRowPoints;
+    private final int fullRowAdjacentToIncompletePoints;
+    private final int fullRowNotAdjacentToIncompletePoints;
+
+    public ScoreFilterRowFullOrEmpty(
+            int emptyRowPoints,
+            int fullRowAdjacentToIncompletePoints,
+            int fullRowNotAdjacentToIncompletePoints
+    ) {
+        this.emptyRowPoints = emptyRowPoints;
+        this.fullRowAdjacentToIncompletePoints = fullRowAdjacentToIncompletePoints;
+        this.fullRowNotAdjacentToIncompletePoints = fullRowNotAdjacentToIncompletePoints;
+    }
+
     @Override
     public int calculateScore(Sheet sheet, SubSheet subSheet) {
 
@@ -19,10 +33,12 @@ public class ScoreFilterRowFullOrEmpty implements ScoreFilter {
                 .count();
 
             if (setCandidatesCount == subSheet.getSizeX()) {
-                score += touchesIncompleteRow(y, subSheet) ? 2 : 3;
+                score += touchesIncompleteRow(y, subSheet)
+                    ? fullRowAdjacentToIncompletePoints
+                    : fullRowNotAdjacentToIncompletePoints;
             }
             else if (setCandidatesCount == 0) {
-                score += 1;
+                score += emptyRowPoints;
             }
         }
 

@@ -59,6 +59,16 @@ Jeżeli baza została wcześniej utworzona przez dawny skrypt `cartscheduler.sql
 
 Domyślne wartości konfiguracji można nadpisać zmiennymi `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET` oraz `JWT_EXPIRATION`.
 
+## Jednorazowe generowanie grafiku z konsoli
+
+Po wprowadzeniu wymaganej konfiguracji w tabeli `config_row_full_or_empty_scores` można wygenerować i zapisać grafik dla konkretnego harmonogramu bez wystawiania API:
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --schedule-generation.schedule-id=1"
+```
+
+Komenda zamyka kontekst aplikacji po zakończeniu generowania. Pozostałe tabele `config_*` są opcjonalne i doprecyzowują punktację oraz dopuszczalność kandydatów.
+
 ## Testy
 
 | Rodzaj | Katalog | Konwencja nazwy | Polecenie |

@@ -33,7 +33,11 @@ public class SubSheet {
 
         for (Cell originalCell : cells) {
             Cell copyCell = new Cell(originalCell.getX(), originalCell.getY());
-            copyCell.setCandidate(originalCell.getCandidate());
+            if (originalCell.isFixed()) {
+                copyCell.setFixedCandidate(originalCell.getCandidate());
+            } else {
+                copyCell.setCandidate(originalCell.getCandidate());
+            }
 
             copySubSheet.cells.add(copyCell);
         }

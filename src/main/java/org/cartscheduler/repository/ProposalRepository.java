@@ -9,6 +9,13 @@ import java.util.List;
 public interface ProposalRepository extends JpaRepository<Proposal, Long> {
 
     @Query("SELECT proposal FROM Proposal proposal " +
+            "JOIN FETCH proposal.participant " +
+            "JOIN FETCH proposal.scheduleDay scheduleDay " +
+            "LEFT JOIN FETCH proposal.pairParticipant " +
+            "WHERE scheduleDay.schedule.id = ?1")
+    List<Proposal> findForSchedule(Long scheduleId);
+
+    @Query("SELECT proposal FROM Proposal proposal " +
             "WHERE proposal.participant.id = ?1 " +
             "AND proposal.scheduleDay.id = ?2 " +
             "ORDER BY proposal.dateAdd ASC, proposal.id ASC")

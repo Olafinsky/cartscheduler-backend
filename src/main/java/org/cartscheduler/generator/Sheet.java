@@ -15,6 +15,13 @@ public class Sheet {
         }
     }
 
+    /**
+     * Creates a sheet from sub-sheets which may have different dimensions.
+     */
+    public Sheet(List<SubSheet> subSheets) {
+        subSheetList.addAll(subSheets);
+    }
+
     public List<SubSheet> getSubSheets() {
         return subSheetList;
     }
