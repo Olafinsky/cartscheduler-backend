@@ -27,6 +27,9 @@ public final class PairRules {
     }
 
     public boolean accepts(long firstCandidateId, long secondCandidateId) {
+        if (firstCandidateId == secondCandidateId) {
+            return false;
+        }
         CandidatePair pair = new CandidatePair(firstCandidateId, secondCandidateId);
         if (forbiddenPairs.contains(pair)) {
             return false;

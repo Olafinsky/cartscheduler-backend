@@ -2,6 +2,7 @@ package org.cartscheduler.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.cartscheduler.entity.BreakMode;
 import org.cartscheduler.entity.ConfigParticipantBreakLength;
 import org.cartscheduler.entity.ConfigParticipantServiceLength;
 import org.cartscheduler.entity.ConfigRowFullOrEmptyScore;
@@ -112,6 +113,244 @@ class ScheduleGenerationServiceTest {
     }
 
     @Test
+    void leavesARowEmptyWhenOnlyOneParticipantQualifiesForIt() {
+        ScheduleDay day = day(100L, "Monday", (short) 8);
+        Participant onlyParticipant = participant(1L);
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                proposal(onlyParticipant, day, (short) 8, (short) 8)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        ScheduleGenerationResult result = scheduleGenerationService.generate(10L);
+
+        ScheduleEntry entry = day.getScheduleEntries().getFirst();
+        assertThat(result).isEqualTo(new ScheduleGenerationResult(10L, 0));
+        assertThat(entry.getParticipant1()).isNull();
+        assertThat(entry.getParticipant2()).isNull();
+    }
+
+    @Test
+    void previewsTheGeneratedScheduleWithoutPersistingParticipants() {
+        ScheduleDay day = day(100L, "Monday", (short) 8);
+        Participant first = participant(1L);
+        Participant second = participant(2L);
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                proposal(first, day, (short) 8, (short) 8),
+                proposal(second, day, (short) 8, (short) 8)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        ScheduleGenerationPreview preview = scheduleGenerationService.preview(10L);
+
+        assertThat(preview).isEqualTo(new ScheduleGenerationPreview(10L, 2, 10, false));
+        assertThat(day.getScheduleEntries().getFirst().getParticipant1()).isNull();
+        assertThat(day.getScheduleEntries().getFirst().getParticipant2()).isNull();
+        verifyNoInteractions(scheduleEntryRepository);
+    }
+
+    @Test
+    void honorsThePairParticipantRequestedInAProposal() {
+        ScheduleDay day = day(100L, "Monday", (short) 8);
+        Participant first = participant(1L);
+        Participant requestedPairParticipant = participant(2L);
+        Participant otherParticipant = participant(3L);
+        Proposal proposalWithPair = proposal(first, day, (short) 8, (short) 8, (short) 1, (short) 1, null, null);
+        proposalWithPair.setPairParticipant(requestedPairParticipant);
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                proposalWithPair,
+                proposal(requestedPairParticipant, day, (short) 8, (short) 8),
+                proposal(otherParticipant, day, (short) 8, (short) 8)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        scheduleGenerationService.generate(10L);
+
+        ScheduleEntry entry = day.getScheduleEntries().getFirst();
+        assertThat(List.of(entry.getParticipant1().getId(), entry.getParticipant2().getId()))
+                .containsExactlyInAnyOrder(first.getId(), requestedPairParticipant.getId());
+    }
+
+    @Test
+    void ignoresProposalWhenRequestedPairParticipantHasNoCompatibleProposal() {
+        ScheduleDay day = day(100L, "Monday", (short) 8, (short) 9);
+        Participant first = participant(1L);
+        Participant unavailablePartner = participant(2L);
+        Proposal proposalWithUnavailablePartner = proposal(
+                first,
+                day,
+                (short) 8,
+                (short) 9,
+                (short) 1,
+                (short) 1,
+                null,
+                null
+        );
+        proposalWithUnavailablePartner.setPairParticipant(unavailablePartner);
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(proposalWithUnavailablePartner));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        ScheduleGenerationResult result = scheduleGenerationService.generate(10L);
+
+        assertThat(result).isEqualTo(new ScheduleGenerationResult(10L, 0));
+        assertThat(day.getScheduleEntries())
+                .allSatisfy(entry -> {
+                    assertThat(entry.getParticipant1()).isNull();
+                    assertThat(entry.getParticipant2()).isNull();
+                });
+        verify(scheduleEntryRepository).saveAll(day.getScheduleEntries());
+    }
+
+    @Test
+    void omitsAnOptionalRequestedPairWhoseMinimumServiceCannotBeFulfilled() {
+        ScheduleDay day = day(100L, "Monday", (short) 8, (short) 9);
+        Participant requester = participant(1L);
+        Participant requestedPartner = participant(2L);
+        Participant firstFallback = participant(3L);
+        Participant secondFallback = participant(4L);
+        Proposal requesterProposal = proposal(
+                requester,
+                day,
+                (short) 8,
+                (short) 9,
+                (short) 2,
+                (short) 2,
+                null,
+                null
+        );
+        requesterProposal.setPairParticipant(requestedPartner);
+
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                requesterProposal,
+                proposal(requestedPartner, day, (short) 8, (short) 8),
+                proposal(firstFallback, day, (short) 8, (short) 9),
+                proposal(secondFallback, day, (short) 8, (short) 9)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        ScheduleGenerationResult result = scheduleGenerationService.generate(10L);
+
+        assertThat(result).isEqualTo(new ScheduleGenerationResult(10L, 4));
+        assertThat(day.getScheduleEntries())
+                .allSatisfy(entry -> {
+                    assertThat(isParticipantAssigned(entry, requester.getId())).isFalse();
+                    assertThat(isParticipantAssigned(entry, requestedPartner.getId())).isFalse();
+                });
+    }
+
+    @Test
+    void choosesOneProposalFromAnAlternativeGroupInsteadOfMergingConflictingServiceLengths() {
+        ScheduleDay day = day(100L, "Monday", (short) 12, (short) 13);
+        Participant alternativeParticipant = participant(18L);
+        Participant otherParticipant = participant(2L);
+        Proposal oneHourOption = proposal(
+                alternativeParticipant,
+                day,
+                (short) 12,
+                (short) 12,
+                (short) 1,
+                (short) 1,
+                null,
+                null
+        );
+        oneHourOption.setId(1001L);
+        oneHourOption.setAlternativeGroup("hours");
+        Proposal twoHourOption = proposal(
+                alternativeParticipant,
+                day,
+                (short) 12,
+                (short) 13,
+                (short) 2,
+                (short) 2,
+                null,
+                null
+        );
+        twoHourOption.setId(1002L);
+        twoHourOption.setAlternativeGroup("hours");
+
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                oneHourOption,
+                twoHourOption,
+                proposal(otherParticipant, day, (short) 12, (short) 13)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        scheduleGenerationService.generate(10L);
+
+        assertThat(assignedHours(day, alternativeParticipant.getId()))
+                .containsExactly((short) 12, (short) 13);
+    }
+
+    @Test
+    void choosesAtMostOneAlternativeProposalAcrossAllScheduleDays() {
+        ScheduleDay monday = day(100L, "Monday", (short) 8);
+        ScheduleDay wednesday = day(101L, "Wednesday", (short) 8);
+        wednesday.setDayOfWeek((short) 3);
+        Participant alternativeParticipant = participant(18L);
+        Participant otherParticipant = participant(2L);
+        Proposal mondayOption = proposal(
+                alternativeParticipant,
+                monday,
+                (short) 8,
+                (short) 8,
+                (short) 1,
+                (short) 1,
+                null,
+                null
+        );
+        mondayOption.setId(1001L);
+        mondayOption.setAlternativeGroup("once-a-week");
+        Proposal wednesdayOption = proposal(
+                alternativeParticipant,
+                wednesday,
+                (short) 8,
+                (short) 8,
+                (short) 1,
+                (short) 1,
+                null,
+                null
+        );
+        wednesdayOption.setId(1002L);
+        wednesdayOption.setAlternativeGroup("once-a-week");
+
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(monday, wednesday));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                mondayOption,
+                wednesdayOption,
+                proposal(otherParticipant, monday, (short) 8, (short) 8),
+                proposal(otherParticipant, wednesday, (short) 8, (short) 8)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        scheduleGenerationService.generate(10L);
+
+        long alternativeAssignments = List.of(monday, wednesday).stream()
+                .flatMap(day -> day.getScheduleEntries().stream())
+                .filter(entry -> isParticipantAssigned(entry, alternativeParticipant.getId()))
+                .count();
+        assertThat(alternativeAssignments).isEqualTo(1);
+    }
+
+    @Test
     void fillsEveryEntryOfAMatchingDayWithEnforcedParticipants() {
         ScheduleDay day = day(100L, "Monday", (short) 8, (short) 9);
         Participant first = participant(11L);
@@ -155,8 +394,19 @@ class ScheduleGenerationServiceTest {
         given(participantServiceLengthRepository.findAll()).willReturn(List.of(serviceLength));
         given(participantBreakLengthRepository.findAll()).willReturn(List.of(breakLength));
         given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        Proposal configuredProposal = proposal(
+                configuredParticipant,
+                day,
+                (short) 8,
+                (short) 11,
+                (short) 1,
+                (short) 1,
+                (short) 1,
+                (short) 1
+        );
+        configuredProposal.setBreakMode(BreakMode.REQUIRE_BREAK);
         given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
-                proposal(configuredParticipant, day, (short) 8, (short) 11, (short) 1, (short) 1, (short) 1, (short) 1),
+                configuredProposal,
                 proposal(otherParticipant, day, (short) 8, (short) 11)
         ));
         given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
@@ -168,6 +418,70 @@ class ScheduleGenerationServiceTest {
                 .map(ScheduleEntry::getHour)
                 .toList())
                 .containsExactly((short) 8, (short) 11);
+    }
+
+    @Test
+    void keepsAnAssignedNoBreakParticipantInOneContinuousBlock() {
+        ScheduleDay day = day(100L, "Monday", (short) 8, (short) 9, (short) 10);
+        Participant noBreakParticipant = participant(1L);
+        Participant otherParticipant = participant(2L);
+        Proposal noBreakProposal = proposal(
+                noBreakParticipant,
+                day,
+                (short) 8,
+                (short) 10,
+                (short) 2,
+                (short) 2,
+                null,
+                null
+        );
+        noBreakProposal.setBreakMode(BreakMode.NO_BREAK);
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                noBreakProposal,
+                proposal(otherParticipant, day, (short) 8, (short) 10)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        scheduleGenerationService.generate(10L);
+
+        List<Short> assignedHours = assignedHours(day, noBreakParticipant.getId());
+        assertThat(assignedHours).hasSize(2);
+        assertThat(assignedHours.get(1).intValue() - assignedHours.getFirst().intValue()).isEqualTo(1);
+    }
+
+    @Test
+    void requiresABreakWithTheRequestedLength() {
+        ScheduleDay day = day(100L, "Monday", (short) 8, (short) 9, (short) 10, (short) 11);
+        Participant breakParticipant = participant(1L);
+        Participant otherParticipant = participant(2L);
+        Proposal breakProposal = proposal(
+                breakParticipant,
+                day,
+                (short) 8,
+                (short) 11,
+                (short) 2,
+                (short) 2,
+                (short) 1,
+                (short) 1
+        );
+        breakProposal.setBreakMode(BreakMode.REQUIRE_BREAK);
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                breakProposal,
+                proposal(otherParticipant, day, (short) 8, (short) 11)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        scheduleGenerationService.generate(10L);
+
+        List<Short> assignedHours = assignedHours(day, breakParticipant.getId());
+        assertThat(assignedHours).hasSize(2);
+        assertThat(assignedHours.get(1).intValue() - assignedHours.getFirst().intValue()).isEqualTo(2);
     }
 
     private void stubRequiredConfiguration() {
@@ -236,5 +550,12 @@ class ScheduleGenerationServiceTest {
     private boolean isParticipantAssigned(ScheduleEntry entry, long participantId) {
         return (entry.getParticipant1() != null && entry.getParticipant1().getId() == participantId)
                 || (entry.getParticipant2() != null && entry.getParticipant2().getId() == participantId);
+    }
+
+    private List<Short> assignedHours(ScheduleDay day, long participantId) {
+        return day.getScheduleEntries().stream()
+                .filter(entry -> isParticipantAssigned(entry, participantId))
+                .map(ScheduleEntry::getHour)
+                .toList();
     }
 }

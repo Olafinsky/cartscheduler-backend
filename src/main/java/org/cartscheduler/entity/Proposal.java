@@ -1,6 +1,7 @@
 package org.cartscheduler.entity;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -40,6 +41,9 @@ public class Proposal {
     @JoinColumn(name = "pair_participant_id")
     private Participant pairParticipant;
 
+    @Column(name = "alternative_group")
+    private String alternativeGroup;
+
     @ManyToOne
     @JoinColumn(name = "inserting_participant_id")
     private Participant insertingParticipant;
@@ -54,6 +58,10 @@ public class Proposal {
 
     @Column(name = "hour_end")
     private short hourEnd;
+
+    @Convert(converter = BreakModeConverter.class)
+    @Column(name = "break_mode", nullable = false)
+    private BreakMode breakMode = BreakMode.INDIFFERENT;
 
     @Column(name = "break_length_start")
     private Short breakLengthStart;

@@ -25,6 +25,12 @@ public class Participant {
     @NotBlank
     private String email;
 
+    @Column(name = "allow_pair_selection", nullable = false)
+    private boolean allowPairSelection;
+
+    @Column(name = "allow_alternative_group_selection", nullable = false)
+    private boolean allowAlternativeGroupSelection;
+
     @ManyToMany(mappedBy = "accessibleParticipants")
     private List<Schedule> schedules;
 
@@ -46,6 +52,8 @@ public class Participant {
         id = participant.getId();
         name = participant.getName();
         email = participant.getEmail();
+        allowPairSelection = participant.isAllowPairSelection();
+        allowAlternativeGroupSelection = participant.isAllowAlternativeGroupSelection();
     }
 
     public Participant() {}

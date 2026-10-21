@@ -2,6 +2,7 @@ package org.cartscheduler.service;
 
 import org.cartscheduler.dto.rest.request.CreateProposalRequest;
 import org.cartscheduler.dto.rest.response.ProposalDto;
+import org.cartscheduler.entity.BreakMode;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.Proposal;
 import org.cartscheduler.entity.ScheduleDay;
@@ -66,15 +67,36 @@ public class ProposalService {
                         "Authenticated participant does not exist"
                 ));
 
-        validateProposalValues(request, scheduleDay.getId());
+        BreakMode breakMode = resolveBreakMode(request);
+        validateProposalValues(request, scheduleDay.getId(), breakMode);
+        Participant pairParticipant = resolvePairParticipant(
+                request.getPairParticipantId(),
+                participant,
+                insertingParticipant,
+                scheduleIdFromToken
+        );
+        String alternativeGroup = resolveAlternativeGroup(
+                request.getAlternativeGroup(),
+                insertingParticipant
+        );
+        assertNoConflictingProposal(
+                participant.getId(),
+                scheduleDay.getId(),
+                request.getHourStart(),
+                request.getHourEnd(),
+                alternativeGroup
+        );
 
         Proposal proposal = new Proposal();
         proposal.setDateAdd(new Date());
         proposal.setParticipant(participant);
+        proposal.setPairParticipant(pairParticipant);
+        proposal.setAlternativeGroup(alternativeGroup);
         proposal.setInsertingParticipant(insertingParticipant);
         proposal.setScheduleDay(scheduleDay);
         proposal.setHourStart(request.getHourStart().shortValue());
         proposal.setHourEnd(request.getHourEnd().shortValue());
+        proposal.setBreakMode(breakMode);
         proposal.setServiceLengthStart(request.getServiceLengthStart().shortValue());
         proposal.setServiceLengthEnd(request.getServiceLengthEnd().shortValue());
         proposal.setBreakLengthStart(toShort(request.getBreakLengthStart()));
@@ -119,7 +141,102 @@ public class ProposalService {
         }
     }
 
-    private void validateProposalValues(CreateProposalRequest request, Long scheduleDayId) {
+    private Participant resolvePairParticipant(
+            Long pairParticipantId,
+            Participant targetParticipant,
+            Participant insertingParticipant,
+            Long scheduleIdFromToken
+    ) {
+        if (pairParticipantId == null) {
+            return null;
+        }
+        if (!insertingParticipant.isAllowPairSelection()) {
+            throw forbidden("Authenticated participant is not allowed to select a participant pair");
+        }
+        if (pairParticipantId == targetParticipant.getId()) {
+            throw badRequest("pairParticipantId must identify a different participant");
+        }
+
+        Participant pairParticipant = participantRepository.findById(pairParticipantId)
+                .orElseThrow(() -> badRequest("Pair participant does not exist"));
+        assertAgentCanManageParticipant(insertingParticipant.getId(), pairParticipant.getId(), scheduleIdFromToken);
+        return pairParticipant;
+    }
+
+    private String resolveAlternativeGroup(String alternativeGroup, Participant insertingParticipant) {
+        String normalizedGroup = normalizeAlternativeGroup(alternativeGroup);
+        if (normalizedGroup == null) {
+            return null;
+        }
+        if (normalizedGroup.length() > 64) {
+            throw badRequest("alternativeGroup must contain at most 64 characters");
+        }
+        if (!insertingParticipant.isAllowAlternativeGroupSelection()) {
+            throw forbidden("Authenticated participant is not allowed to select an alternative proposal group");
+        }
+        return normalizedGroup;
+    }
+
+    private void assertNoConflictingProposal(
+            long participantId,
+            long scheduleDayId,
+            int hourStart,
+            int hourEnd,
+            String alternativeGroup
+    ) {
+        proposalRepository.findForParticipantAndScheduleDay(participantId, scheduleDayId).stream()
+                .filter(existingProposal -> intervalsOverlap(
+                        hourStart,
+                        hourEnd,
+                        existingProposal.getHourStart(),
+                        existingProposal.getHourEnd()
+                ))
+                .filter(existingProposal -> !sharesNonEmptyAlternativeGroup(existingProposal, alternativeGroup))
+                .findFirst()
+                .ifPresent(existingProposal -> {
+                    throw badRequest(
+                            "Proposal hours overlap proposal " + existingProposal.getId()
+                                    + " for the same participant and schedule day"
+                    );
+                });
+    }
+
+    private boolean intervalsOverlap(int firstStart, int firstEnd, int secondStart, int secondEnd) {
+        return firstStart <= secondEnd && secondStart <= firstEnd;
+    }
+
+    private boolean sharesNonEmptyAlternativeGroup(Proposal existingProposal, String alternativeGroup) {
+        return alternativeGroup != null
+                && alternativeGroup.equals(normalizeAlternativeGroup(existingProposal.getAlternativeGroup()));
+    }
+
+    private String normalizeAlternativeGroup(String alternativeGroup) {
+        if (alternativeGroup == null) {
+            return null;
+        }
+        String normalizedGroup = alternativeGroup.strip();
+        return normalizedGroup.isEmpty() ? null : normalizedGroup;
+    }
+
+    private BreakMode resolveBreakMode(CreateProposalRequest request) {
+        Integer breakMode = request.getBreakMode();
+        if (breakMode == null) {
+            return request.getBreakLengthStart() == null && request.getBreakLengthEnd() == null
+                    ? BreakMode.NO_BREAK
+                    : BreakMode.REQUIRE_BREAK;
+        }
+        try {
+            return BreakMode.fromCode(breakMode);
+        } catch (IllegalArgumentException exception) {
+            throw badRequest("breakMode must be one of: 0, 1, 2");
+        }
+    }
+
+    private void validateProposalValues(
+            CreateProposalRequest request,
+            Long scheduleDayId,
+            BreakMode breakMode
+    ) {
         Set<Integer> scheduleHours = scheduleEntryRepository.findHoursForScheduleDay(scheduleDayId).stream()
                 .map(Short::intValue)
                 .collect(Collectors.toSet());
@@ -148,6 +265,15 @@ public class ProposalService {
         Integer breakLengthEnd = request.getBreakLengthEnd();
         if ((breakLengthStart == null) != (breakLengthEnd == null)) {
             throw badRequest("breakLengthStart and breakLengthEnd must be provided together");
+        }
+        if (breakMode == BreakMode.NO_BREAK) {
+            if (breakLengthStart != null) {
+                throw badRequest("break lengths must not be provided when breakMode is 0");
+            }
+            return;
+        }
+        if (breakMode == BreakMode.REQUIRE_BREAK && breakLengthStart == null) {
+            throw badRequest("break lengths must be provided when breakMode is 1");
         }
         if (breakLengthStart == null) {
             return;

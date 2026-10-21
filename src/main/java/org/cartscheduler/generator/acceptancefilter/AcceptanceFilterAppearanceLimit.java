@@ -6,7 +6,6 @@ import org.cartscheduler.generator.Candidate;
 import org.cartscheduler.generator.Cell;
 import org.cartscheduler.generator.Sheet;
 import org.cartscheduler.generator.SubSheet;
-import java.util.List;
 import java.util.Map;
 
 public class AcceptanceFilterAppearanceLimit implements AcceptanceFilter {
@@ -31,11 +30,14 @@ public class AcceptanceFilterAppearanceLimit implements AcceptanceFilter {
             return true;
         }
 
-        List<Cell> cells = subSheet.getCells();
-
-        return cells.stream()
-            .filter(c -> c.getCandidate() != null && c.getCandidate().getId() == candidate.getId())
-            .count() < limit;
+        int appearances = 0;
+        for (Cell existingCell : subSheet.getCells()) {
+            Candidate existingCandidate = existingCell.getCandidate();
+            if (existingCandidate != null && existingCandidate.getId() == candidate.getId()) {
+                appearances++;
+            }
+        }
+        return appearances < limit;
     }
 
     private Integer appearanceLimitFor(Candidate candidate, Sheet sheet, SubSheet subSheet) {

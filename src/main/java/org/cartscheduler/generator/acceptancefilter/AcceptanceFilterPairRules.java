@@ -28,12 +28,20 @@ public class AcceptanceFilterPairRules implements AcceptanceFilter {
     @Override
     public boolean isAccepted(Candidate candidate, Sheet sheet, SubSheet subSheet, Cell cell) {
         PairRules rowRules = rowRulesFor(sheet, subSheet, cell);
-        return subSheet.getCells(null, cell.getY()).stream()
-                .filter(otherCell -> otherCell != cell)
-                .map(Cell::getCandidate)
-                .filter(otherCandidate -> otherCandidate != null)
-                .allMatch(otherCandidate -> globalRules.accepts(candidate.getId(), otherCandidate.getId())
-                        && rowRules.accepts(candidate.getId(), otherCandidate.getId()));
+        for (int x = 0; x < subSheet.getSizeX(); x++) {
+            Cell otherCell = subSheet.getCell(x, cell.getY());
+            if (otherCell == cell) {
+                continue;
+            }
+            Candidate otherCandidate = otherCell.getCandidate();
+            if (otherCandidate != null
+                    && (otherCandidate.getId() == candidate.getId()
+                    || !globalRules.accepts(candidate.getId(), otherCandidate.getId())
+                    || !rowRules.accepts(candidate.getId(), otherCandidate.getId()))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private PairRules rowRulesFor(Sheet sheet, SubSheet subSheet, Cell cell) {

@@ -33,7 +33,11 @@ public class AuthController {
             RestAuthResponse response = new RestAuthResponse();
             response.setJwtToken(jwtService.generateToken(participantAccessToken.getParticipant().getEmail(), scheduleId));
             response.setExpiresAt(jwtService.getExpirationTime());
-            response.setScheduleId(scheduleId);;
+            response.setScheduleId(scheduleId);
+            response.setAllowPairSelection(participantAccessToken.getParticipant().isAllowPairSelection());
+            response.setAllowAlternativeGroupSelection(
+                    participantAccessToken.getParticipant().isAllowAlternativeGroupSelection()
+            );
 
             return response;
         } else {

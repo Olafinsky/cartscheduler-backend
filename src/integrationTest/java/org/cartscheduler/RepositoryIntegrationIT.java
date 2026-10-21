@@ -85,9 +85,17 @@ class RepositoryIntegrationIT {
     private ScheduleGenerationService scheduleGenerationService;
 
     @Test
-    void shouldApplyInitialFlywayMigrationToIsolatedMySqlDatabase() {
-        Integer migrationCount = jdbcTemplate.queryForObject(
+    void shouldApplyFlywayMigrationsToIsolatedMySqlDatabase() {
+        Integer initialMigrationCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '1' AND success = true",
+                Integer.class
+        );
+        Integer pairAndBreakMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '3' AND success = true",
+                Integer.class
+        );
+        Integer alternativeGroupMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '4' AND success = true",
                 Integer.class
         );
         Integer participantsTableCount = jdbcTemplate.queryForObject(
@@ -96,8 +104,39 @@ class RepositoryIntegrationIT {
                 Integer.class
         );
 
-        assertThat(migrationCount).isEqualTo(1);
+        Integer allowPairSelectionColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'allow_pair_selection'",
+                Integer.class
+        );
+        Integer breakModeColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'proposals' " +
+                        "AND column_name = 'break_mode'",
+                Integer.class
+        );
+        Integer allowAlternativeGroupSelectionColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'allow_alternative_group_selection'",
+                Integer.class
+        );
+        Integer alternativeGroupColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'proposals' " +
+                        "AND column_name = 'alternative_group'",
+                Integer.class
+        );
+
+        assertThat(initialMigrationCount).isEqualTo(1);
+        assertThat(pairAndBreakMigrationCount).isEqualTo(1);
+        assertThat(alternativeGroupMigrationCount).isEqualTo(1);
         assertThat(participantsTableCount).isEqualTo(1);
+        assertThat(allowPairSelectionColumnCount).isEqualTo(1);
+        assertThat(breakModeColumnCount).isEqualTo(1);
+        assertThat(allowAlternativeGroupSelectionColumnCount).isEqualTo(1);
+        assertThat(alternativeGroupColumnCount).isEqualTo(1);
     }
 
     @Test

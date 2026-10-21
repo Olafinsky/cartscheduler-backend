@@ -34,7 +34,10 @@ class AuthControllerTest {
     void shouldReturnJwtAndScheduleForValidInvitationToken() {
         ParticipantAccessToken accessToken = new ParticipantAccessToken();
         accessToken.setToken("valid-invitation");
-        accessToken.setParticipant(participant(1L));
+        var agent = participant(1L);
+        agent.setAllowPairSelection(true);
+        agent.setAllowAlternativeGroupSelection(true);
+        accessToken.setParticipant(agent);
         accessToken.setSchedule(schedule(5L, "Main schedule", java.util.List.of()));
         given(participantAccessTokenRepository.findAccessForToken("valid-invitation")).willReturn(accessToken);
         given(jwtService.generateToken("participant1@example.test", 5L)).willReturn("jwt-token");
@@ -45,6 +48,8 @@ class AuthControllerTest {
         assertThat(response.getJwtToken()).isEqualTo("jwt-token");
         assertThat(response.getScheduleId()).isEqualTo(5L);
         assertThat(response.getExpiresAt()).isEqualTo(123_456L);
+        assertThat(response.isAllowPairSelection()).isTrue();
+        assertThat(response.isAllowAlternativeGroupSelection()).isTrue();
     }
 
     @Test

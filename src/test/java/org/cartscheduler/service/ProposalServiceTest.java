@@ -2,6 +2,7 @@ package org.cartscheduler.service;
 
 import org.cartscheduler.dto.rest.request.CreateProposalRequest;
 import org.cartscheduler.dto.rest.response.ProposalDto;
+import org.cartscheduler.entity.BreakMode;
 import org.cartscheduler.entity.Proposal;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.repository.ParticipantRepository;
@@ -51,6 +52,7 @@ class ProposalServiceTest {
     @Test
     void shouldMapProposalsAssignedToParticipantForRequestedScheduleDay() {
         Proposal proposal = proposal(10L, 1L, 2L, 3L, 5L);
+        proposal.setAlternativeGroup("weekly-choice");
         given(scheduleDayRepository.findByIdForSchedule(5L, 20L)).willReturn(scheduleDay(5L));
         given(participantRepository.countAssignedParticipantForAgentAndSchedule(3L, 1L, 20L)).willReturn(1L);
         given(proposalRepository.findForParticipantAndScheduleDay(1L, 5L)).willReturn(List.of(proposal));
@@ -67,12 +69,15 @@ class ProposalServiceTest {
                         dto -> dto.getScheduleDayId(),
                         dto -> dto.getHourStart(),
                         dto -> dto.getHourEnd(),
+                        dto -> dto.getBreakMode(),
                         dto -> dto.getBreakLengthStart(),
                         dto -> dto.getBreakLengthEnd(),
                         dto -> dto.getServiceLengthStart(),
-                        dto -> dto.getServiceLengthEnd()
+                        dto -> dto.getServiceLengthEnd(),
+                        dto -> dto.getAlternativeGroup()
                 )
-                .containsExactly(10L, 1L, 2L, 3L, 5L, 8, 12, (short) 1, (short) 2, (short) 3, (short) 4);
+                .containsExactly(10L, 1L, 2L, 3L, 5L, 8, 12, 1, (short) 1, (short) 2, (short) 3, (short) 4,
+                        "weekly-choice");
         verify(proposalRepository).findForParticipantAndScheduleDay(1L, 5L);
     }
 
@@ -114,14 +119,215 @@ class ProposalServiceTest {
                         ProposalDto::getScheduleDayId,
                         ProposalDto::getHourStart,
                         ProposalDto::getHourEnd,
+                        ProposalDto::getBreakMode,
                         ProposalDto::getServiceLengthStart,
                         ProposalDto::getServiceLengthEnd,
                         ProposalDto::getBreakLengthStart,
-                        ProposalDto::getBreakLengthEnd
+                        ProposalDto::getBreakLengthEnd,
+                        ProposalDto::getAlternativeGroup
                 )
-                .containsExactly(99L, generatedDate, 2L, null, 1L, 10L, 7, 15,
-                        (short) 4, (short) 6, (short) 1, (short) 2);
+                .containsExactly(99L, generatedDate, 2L, null, 1L, 10L, 7, 15, 1,
+                        (short) 4, (short) 6, (short) 1, (short) 2, null);
         verify(proposalRepository).saveAndFlush(any(Proposal.class));
+    }
+
+    @Test
+    void shouldCreateProposalWithPairSelectedByAnAuthorizedAgent() {
+        CreateProposalRequest request = validRequest();
+        request.setPairParticipantId(3L);
+        request.setBreakMode(2);
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay);
+        var agent = participant(1L);
+        agent.setAllowPairSelection(true);
+        var selectedPairParticipant = participant(3L);
+        given(participantRepository.findById(1L)).willReturn(Optional.of(agent));
+        given(participantRepository.findById(3L)).willReturn(Optional.of(selectedPairParticipant));
+        given(participantRepository.countAssignedParticipantForAgentAndSchedule(1L, 3L, 5L)).willReturn(1L);
+        given(proposalRepository.saveAndFlush(any(Proposal.class))).willAnswer(invocation -> {
+            Proposal savedProposal = invocation.getArgument(0);
+            savedProposal.setId(99L);
+            return savedProposal;
+        });
+
+        ProposalDto result = proposalService.createProposal(request, 1L, 5L);
+
+        assertThat(result.getPairParticipantId()).isEqualTo(3L);
+        assertThat(result.getBreakMode()).isEqualTo(2);
+        verify(participantRepository).countAssignedParticipantForAgentAndSchedule(1L, 3L, 5L);
+    }
+
+    @Test
+    void shouldCreateProposalWithNormalizedAlternativeGroupSelectedByAnAuthorizedAgent() {
+        CreateProposalRequest request = validRequest();
+        request.setAlternativeGroup("  once-a-week  ");
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay);
+        var agent = participant(1L);
+        agent.setAllowAlternativeGroupSelection(true);
+        given(participantRepository.findById(1L)).willReturn(Optional.of(agent));
+        given(proposalRepository.saveAndFlush(any(Proposal.class))).willAnswer(invocation -> {
+            Proposal savedProposal = invocation.getArgument(0);
+            savedProposal.setId(99L);
+            return savedProposal;
+        });
+
+        ProposalDto result = proposalService.createProposal(request, 1L, 5L);
+
+        assertThat(result.getAlternativeGroup()).isEqualTo("once-a-week");
+    }
+
+    @Test
+    void shouldForbidAlternativeGroupSelectionWhenAgentDoesNotHavePermission() {
+        CreateProposalRequest request = validRequest();
+        request.setAlternativeGroup("once-a-week");
+        stubValidCreate(request, scheduleDay(10L));
+
+        assertForbidden(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verifyNoInteractions(proposalRepository);
+    }
+
+    @Test
+    void shouldTreatBlankAlternativeGroupAsNoGroupWithoutRequiringPermission() {
+        CreateProposalRequest request = validRequest();
+        request.setAlternativeGroup("  \t ");
+        stubValidCreate(request, scheduleDay(10L));
+        stubSavedProposal();
+
+        ProposalDto result = proposalService.createProposal(request, 1L, 5L);
+
+        assertThat(result.getAlternativeGroup()).isNull();
+    }
+
+    @Test
+    void shouldRejectOverlappingProposalWhenNeitherProposalHasAnAlternativeGroup() {
+        CreateProposalRequest request = proposalRequest(10, 12);
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay, List.of((short) 10, (short) 12));
+        given(proposalRepository.findForParticipantAndScheduleDay(2L, 10L)).willReturn(List.of(
+                existingProposal(50L, (short) 9, (short) 10, null)
+        ));
+
+        assertBadRequest(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verify(proposalRepository).findForParticipantAndScheduleDay(2L, 10L);
+        verify(proposalRepository, never()).saveAndFlush(any(Proposal.class));
+    }
+
+    @Test
+    void shouldAllowOverlappingProposalsWithTheSameNonEmptyAlternativeGroup() {
+        CreateProposalRequest request = proposalRequest(10, 12);
+        request.setAlternativeGroup("choice-1");
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay, List.of((short) 10, (short) 12));
+        var agent = participant(1L);
+        agent.setAllowAlternativeGroupSelection(true);
+        given(participantRepository.findById(1L)).willReturn(Optional.of(agent));
+        given(proposalRepository.findForParticipantAndScheduleDay(2L, 10L)).willReturn(List.of(
+                existingProposal(50L, (short) 9, (short) 10, "choice-1")
+        ));
+        stubSavedProposal();
+
+        ProposalDto result = proposalService.createProposal(request, 1L, 5L);
+
+        assertThat(result.getAlternativeGroup()).isEqualTo("choice-1");
+        verify(proposalRepository).saveAndFlush(any(Proposal.class));
+    }
+
+    @Test
+    void shouldRejectOverlappingProposalWhenOnlyOneProposalHasAnAlternativeGroup() {
+        CreateProposalRequest request = proposalRequest(10, 12);
+        request.setAlternativeGroup("choice-1");
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay, List.of((short) 10, (short) 12));
+        var agent = participant(1L);
+        agent.setAllowAlternativeGroupSelection(true);
+        given(participantRepository.findById(1L)).willReturn(Optional.of(agent));
+        given(proposalRepository.findForParticipantAndScheduleDay(2L, 10L)).willReturn(List.of(
+                existingProposal(50L, (short) 9, (short) 10, null)
+        ));
+
+        assertBadRequest(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verify(proposalRepository, never()).saveAndFlush(any(Proposal.class));
+    }
+
+    @Test
+    void shouldRejectOverlappingProposalsWithDifferentAlternativeGroups() {
+        CreateProposalRequest request = proposalRequest(10, 12);
+        request.setAlternativeGroup("choice-1");
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay, List.of((short) 10, (short) 12));
+        var agent = participant(1L);
+        agent.setAllowAlternativeGroupSelection(true);
+        given(participantRepository.findById(1L)).willReturn(Optional.of(agent));
+        given(proposalRepository.findForParticipantAndScheduleDay(2L, 10L)).willReturn(List.of(
+                existingProposal(50L, (short) 9, (short) 10, "choice-2")
+        ));
+
+        assertBadRequest(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verify(proposalRepository, never()).saveAndFlush(any(Proposal.class));
+    }
+
+    @Test
+    void shouldAllowProposalsThatAreAdjacentButDoNotOverlap() {
+        CreateProposalRequest request = proposalRequest(11, 12);
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay, List.of((short) 11, (short) 12));
+        given(proposalRepository.findForParticipantAndScheduleDay(2L, 10L)).willReturn(List.of(
+                existingProposal(50L, (short) 9, (short) 10, null)
+        ));
+        stubSavedProposal();
+
+        ProposalDto result = proposalService.createProposal(request, 1L, 5L);
+
+        assertThat(result.getHourStart()).isEqualTo(11);
+        assertThat(result.getHourEnd()).isEqualTo(12);
+    }
+
+    @Test
+    void shouldForbidPairSelectionWhenAgentDoesNotHavePermission() {
+        CreateProposalRequest request = validRequest();
+        request.setPairParticipantId(3L);
+        stubValidCreate(request, scheduleDay(10L));
+
+        assertForbidden(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verifyNoInteractions(proposalRepository);
+    }
+
+    @Test
+    void shouldForbidPairSelectionForParticipantNotAssignedToAgent() {
+        CreateProposalRequest request = validRequest();
+        request.setPairParticipantId(3L);
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay);
+        var agent = participant(1L);
+        agent.setAllowPairSelection(true);
+        given(participantRepository.findById(1L)).willReturn(Optional.of(agent));
+        given(participantRepository.findById(3L)).willReturn(Optional.of(participant(3L)));
+        given(participantRepository.countAssignedParticipantForAgentAndSchedule(1L, 3L, 5L)).willReturn(0L);
+
+        assertForbidden(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verifyNoInteractions(proposalRepository);
+    }
+
+    @Test
+    void shouldRejectUsingTheProposalParticipantAsItsOwnPair() {
+        CreateProposalRequest request = validRequest();
+        request.setPairParticipantId(2L);
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay);
+        var agent = participant(1L);
+        agent.setAllowPairSelection(true);
+        given(participantRepository.findById(1L)).willReturn(Optional.of(agent));
+
+        assertBadRequest(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verifyNoInteractions(proposalRepository);
     }
 
     @Test
@@ -144,10 +350,11 @@ class ProposalServiceTest {
                         ProposalDto::getHourEnd,
                         ProposalDto::getServiceLengthStart,
                         ProposalDto::getServiceLengthEnd,
+                        ProposalDto::getBreakMode,
                         ProposalDto::getBreakLengthStart,
                         ProposalDto::getBreakLengthEnd
                 )
-                .containsExactly(17, 17, (short) 1, (short) 1, null, null);
+                .containsExactly(17, 17, (short) 1, (short) 1, 0, null, null);
     }
 
     @Test
@@ -179,8 +386,23 @@ class ProposalServiceTest {
         ProposalDto result = proposalService.createProposal(request, 1L, 5L);
 
         assertThat(result)
-                .extracting(ProposalDto::getBreakLengthStart, ProposalDto::getBreakLengthEnd)
-                .containsExactly((short) 4, (short) 5);
+                .extracting(ProposalDto::getBreakMode, ProposalDto::getBreakLengthStart, ProposalDto::getBreakLengthEnd)
+                .containsExactly(1, (short) 4, (short) 5);
+    }
+
+    @Test
+    void shouldAllowAnIndifferentBreakModeWithoutBreakLengths() {
+        CreateProposalRequest request = new CreateProposalRequest(2L, 10L, 7, 15, 4, 6, null, null);
+        request.setBreakMode(2);
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        stubValidCreate(request, scheduleDay);
+        stubSavedProposal();
+
+        ProposalDto result = proposalService.createProposal(request, 1L, 5L);
+
+        assertThat(result)
+                .extracting(ProposalDto::getBreakMode, ProposalDto::getBreakLengthStart, ProposalDto::getBreakLengthEnd)
+                .containsExactly(2, null, null);
     }
 
     @Test
@@ -271,6 +493,43 @@ class ProposalServiceTest {
     }
 
     @Test
+    void shouldRejectBreakLengthsWhenNoBreakModeIsSelected() {
+        CreateProposalRequest request = validRequest();
+        request.setBreakMode(0);
+        stubValidCreate(request, scheduleDay(10L));
+
+        assertBadRequest(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verifyNoInteractions(proposalRepository);
+    }
+
+    @Test
+    void shouldRequireBreakLengthsWhenBreakModeRequiresABreak() {
+        CreateProposalRequest request = new CreateProposalRequest(2L, 10L, 7, 15, 4, 6, null, null);
+        request.setBreakMode(1);
+        stubValidCreate(request, scheduleDay(10L));
+
+        assertBadRequest(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verifyNoInteractions(proposalRepository);
+    }
+
+    @Test
+    void shouldRejectUnsupportedBreakMode() {
+        CreateProposalRequest request = validRequest();
+        request.setBreakMode(3);
+        ScheduleDay scheduleDay = scheduleDay(10L);
+        given(participantRepository.findById(2L)).willReturn(Optional.of(participant(2L)));
+        given(participantRepository.findById(1L)).willReturn(Optional.of(participant(1L)));
+        given(scheduleDayRepository.findByIdForSchedule(10L, 5L)).willReturn(scheduleDay);
+        given(participantRepository.countAssignedParticipantForAgentAndSchedule(1L, 2L, 5L)).willReturn(1L);
+
+        assertBadRequest(() -> proposalService.createProposal(request, 1L, 5L));
+
+        verifyNoInteractions(proposalRepository);
+    }
+
+    @Test
     void shouldDeleteProposalWhenAuthenticatedParticipantIsAgentOfTargetParticipant() {
         Proposal proposal = proposal(10L, 2L, 3L, 1L, 10L);
         given(proposalRepository.findById(10L)).willReturn(Optional.of(proposal));
@@ -338,6 +597,19 @@ class ProposalServiceTest {
         return new CreateProposalRequest(2L, 10L, 7, 15, 4, 6, 1, 2);
     }
 
+    private CreateProposalRequest proposalRequest(int hourStart, int hourEnd) {
+        return new CreateProposalRequest(2L, 10L, hourStart, hourEnd, 1, hourEnd - hourStart + 1, null, null);
+    }
+
+    private Proposal existingProposal(long id, short hourStart, short hourEnd, String alternativeGroup) {
+        Proposal proposal = new Proposal();
+        proposal.setId(id);
+        proposal.setHourStart(hourStart);
+        proposal.setHourEnd(hourEnd);
+        proposal.setAlternativeGroup(alternativeGroup);
+        return proposal;
+    }
+
     private void stubSavedProposal() {
         given(proposalRepository.saveAndFlush(any(Proposal.class))).willAnswer(invocation -> {
             Proposal savedProposal = invocation.getArgument(0);
@@ -380,6 +652,7 @@ class ProposalServiceTest {
         proposal.setScheduleDay(scheduleDay);
         proposal.setHourStart((short) 8);
         proposal.setHourEnd((short) 12);
+        proposal.setBreakMode(BreakMode.REQUIRE_BREAK);
         proposal.setBreakLengthStart((short) 1);
         proposal.setBreakLengthEnd((short) 2);
         proposal.setServiceLengthStart((short) 3);

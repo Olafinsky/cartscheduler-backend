@@ -1,5 +1,6 @@
 package org.cartscheduler.service;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -7,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.cartscheduler.entity.BreakMode;
 import org.cartscheduler.entity.ConfigCandidateUniquenessScore;
 import org.cartscheduler.entity.ConfigPairDiversityScore;
 import org.cartscheduler.entity.ConfigPairRule;
@@ -22,9 +24,13 @@ import org.cartscheduler.entity.Proposal;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
 import org.cartscheduler.generator.AcceptanceFilter;
+import org.cartscheduler.generator.BreakRequirement;
+import org.cartscheduler.generator.BreakRule;
 import org.cartscheduler.generator.Candidate;
 import org.cartscheduler.generator.CandidatePair;
+import org.cartscheduler.generator.GenerationSearchLimitExceededException;
 import org.cartscheduler.generator.Generator;
+import org.cartscheduler.generator.GeneratorSearchDeadline;
 import org.cartscheduler.generator.IntRange;
 import org.cartscheduler.generator.PairRules;
 import org.cartscheduler.generator.PostGenerationFilter;
@@ -33,11 +39,12 @@ import org.cartscheduler.generator.Sheet;
 import org.cartscheduler.generator.SubSheet;
 import org.cartscheduler.generator.acceptancefilter.AcceptanceFilterAppearanceLimit;
 import org.cartscheduler.generator.acceptancefilter.AcceptanceFilterCandidateQualifiesForRows;
-import org.cartscheduler.generator.acceptancefilter.AcceptanceFilterGapBetweenBlocks;
 import org.cartscheduler.generator.acceptancefilter.AcceptanceFilterPairRules;
 import org.cartscheduler.generator.acceptancefilter.AcceptanceFilterUniqueInRow;
-import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterMinAppearanceCount;
+import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterBreakRules;
+import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterMinimumAppearanceWhenAssigned;
 import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterPairRules;
+import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterRowsAreFullOrEmpty;
 import org.cartscheduler.generator.scorefilter.ScoreFilterCandidatePoints;
 import org.cartscheduler.generator.scorefilter.ScoreFilterPairDiversity;
 import org.cartscheduler.generator.scorefilter.ScoreFilterPairPoints;
@@ -54,6 +61,9 @@ import org.cartscheduler.repository.EnforcedParticipantRepository;
 import org.cartscheduler.repository.ProposalRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +74,9 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class ScheduleGenerationService {
+    private static final Duration DEFAULT_SEARCH_TIME_LIMIT = Duration.ofSeconds(20);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ScheduleGenerationService.class);
+
     private final ScheduleDayRepository scheduleDayRepository;
     private final ScheduleEntryRepository scheduleEntryRepository;
     private final ProposalRepository proposalRepository;
@@ -76,6 +89,9 @@ public class ScheduleGenerationService {
     private final ConfigPairRuleRepository pairRuleRepository;
     private final ConfigParticipantBreakLengthRepository participantBreakLengthRepository;
     private final ConfigParticipantServiceLengthRepository participantServiceLengthRepository;
+
+    @Value("${schedule-generation.search-time-limit:PT20S}")
+    private Duration searchTimeLimit = DEFAULT_SEARCH_TIME_LIMIT;
 
     public ScheduleGenerationService(
             ScheduleDayRepository scheduleDayRepository,
@@ -107,30 +123,367 @@ public class ScheduleGenerationService {
 
     @Transactional
     public ScheduleGenerationResult generate(long scheduleId) {
+        GeneratedSchedule generatedSchedule = generateSchedule(scheduleId);
+        int assignedParticipantCells = persistGeneratedParticipants(
+                generatedSchedule.days(),
+                generatedSchedule.variant().sheet(),
+                generatedSchedule.variant().input().participantsById()
+        );
+        if (generatedSchedule.variant().searchDeadlineReached()) {
+            LOGGER.warn(
+                    "Schedule {} generation reached a search-time budget; persisting the best valid schedule found so far",
+                    scheduleId
+            );
+        }
+        return new ScheduleGenerationResult(scheduleId, assignedParticipantCells);
+    }
+
+    /**
+     * Builds a schedule using the same constraints as {@link #generate(long)}
+     * without updating schedule entries. This is intended for the console
+     * dry-run option and diagnostic use.
+     */
+    @Transactional(readOnly = true)
+    public ScheduleGenerationPreview preview(long scheduleId) {
+        GeneratedSchedule generatedSchedule = generateSchedule(scheduleId);
+        GeneratedVariant variant = generatedSchedule.variant();
+        int assignedParticipantCells = assignedParticipantCells(variant.sheet());
+        if (variant.searchDeadlineReached()) {
+            LOGGER.warn(
+                    "Schedule {} preview reached a search-time budget; returning the best valid schedule found so far",
+                    scheduleId
+            );
+        }
+        return new ScheduleGenerationPreview(
+                scheduleId,
+                assignedParticipantCells,
+                variant.score(),
+                variant.searchDeadlineReached()
+        );
+    }
+
+    private GeneratedSchedule generateSchedule(long scheduleId) {
         ConfigRowFullOrEmptyScore rowScoreConfiguration = requiredRowScoreConfiguration();
         List<DayContext> days = loadDays(scheduleId);
         List<Proposal> proposals = proposalRepository.findForSchedule(scheduleId);
         Map<String, EnforcedParticipant> enforcedByDayName = loadEnforcedParticipants(days);
+        GeneratorSearchDeadline searchDeadline = generationSearchDeadline();
+        LOGGER.info("Generating schedule {} with a maximum search time of {}", scheduleId, searchTimeLimit);
 
-        GenerationInput input = createGenerationInput(days, proposals, enforcedByDayName);
-        Generator generator = Generator.forSheet(input.sheet())
-                .withCandidates(input.candidates())
-                .withAcceptanceFilters(createAcceptanceFilters(input))
-                .withPostGenerationFilters(createPostGenerationFilters(input))
-                .withScoreFilters(createScoreFilters(input, rowScoreConfiguration));
+        GeneratedVariant generatedVariant = generateBestVariant(
+                scheduleId,
+                days,
+                proposals,
+                enforcedByDayName,
+                rowScoreConfiguration,
+                searchDeadline
+        );
+        return new GeneratedSchedule(days, generatedVariant);
+    }
 
-        Sheet generatedSheet;
-        try {
-            generatedSheet = generator.generate();
-        } catch (IllegalStateException exception) {
-            throw new ScheduleGenerationException(
-                    "Schedule " + scheduleId + " cannot satisfy the configured generation constraints",
-                    exception
-            );
+    /**
+     * Proposals with the same non-empty alternative group for one participant
+     * describe mutually exclusive variants. The raw generator deliberately
+     * remains unaware of database proposals, so this application-facing layer
+     * searches each group combination and only maps one selected proposal from
+     * a group into a generator input.
+     */
+    private GeneratedVariant generateBestVariant(
+            long scheduleId,
+            List<DayContext> days,
+            List<Proposal> proposals,
+            Map<String, EnforcedParticipant> enforcedByDayName,
+            ConfigRowFullOrEmptyScore rowScoreConfiguration,
+            GeneratorSearchDeadline searchDeadline
+    ) {
+        List<Proposal> alwaysIncluded = new ArrayList<>();
+        Map<AlternativeGroupKey, List<Proposal>> proposalsByAlternativeGroup = new HashMap<>();
+
+        for (Proposal proposal : proposals) {
+            String alternativeGroup = normalizedAlternativeGroup(proposal);
+            if (alternativeGroup == null) {
+                alwaysIncluded.add(proposal);
+                continue;
+            }
+            AlternativeGroupKey key = new AlternativeGroupKey(proposal.getParticipant().getId(), alternativeGroup);
+            proposalsByAlternativeGroup.computeIfAbsent(key, ignored -> new ArrayList<>()).add(proposal);
         }
 
-        int assignedParticipantCells = persistGeneratedParticipants(days, generatedSheet, input.participantsById());
-        return new ScheduleGenerationResult(scheduleId, assignedParticipantCells);
+        List<AlternativeProposalGroup> alternativeGroups = proposalsByAlternativeGroup.entrySet().stream()
+                .map(entry -> new AlternativeProposalGroup(
+                        entry.getKey().participantId(),
+                        entry.getKey().group(),
+                        entry.getValue().stream().sorted(Comparator.comparingLong(Proposal::getId)).toList()
+                ))
+                .sorted(Comparator.comparingLong(AlternativeProposalGroup::participantId)
+                        .thenComparing(AlternativeProposalGroup::group))
+                .toList();
+
+        List<List<Proposal>> alternativeChoices = new ArrayList<>();
+        for (AlternativeProposalGroup alternativeGroup : alternativeGroups) {
+            if (alternativeGroup.proposals().size() == 1) {
+                // Choosing at most one item from a singleton group adds no
+                // constraint, so retain normal proposal behavior without
+                // creating an unnecessary search branch.
+                alwaysIncluded.addAll(alternativeGroup.proposals());
+            } else {
+                alternativeChoices.add(alternativeGroup.proposals());
+            }
+        }
+
+        if (alternativeChoices.isEmpty()) {
+            try {
+                return generateVariant(
+                        createGenerationInputForGeneration(days, alwaysIncluded, enforcedByDayName),
+                        rowScoreConfiguration,
+                        searchDeadline
+                );
+            } catch (GenerationSearchLimitExceededException exception) {
+                throw generationSearchTimedOut(scheduleId);
+            } catch (IllegalStateException exception) {
+                throw cannotSatisfySchedule(scheduleId, exception);
+            }
+        }
+
+        BestVariant bestVariant = new BestVariant();
+        Integer rowOnlyScoreUpperBound = rowOnlyScoreUpperBound(days, rowScoreConfiguration);
+        searchAlternativeVariants(
+                0,
+                alternativeChoices,
+                new ArrayList<>(alwaysIncluded),
+                bestVariant,
+                days,
+                enforcedByDayName,
+                rowScoreConfiguration,
+                rowOnlyScoreUpperBound,
+                searchDeadline
+        );
+        if (bestVariant.value == null) {
+            if (bestVariant.searchDeadlineReached) {
+                throw generationSearchTimedOut(scheduleId);
+            }
+            throw cannotSatisfySchedule(scheduleId, bestVariant.lastFailure);
+        }
+        return bestVariant.searchDeadlineReached
+                ? bestVariant.value.withSearchDeadlineReached()
+                : bestVariant.value;
+    }
+
+    private void searchAlternativeVariants(
+            int groupIndex,
+            List<List<Proposal>> alternativeChoices,
+            List<Proposal> selectedProposals,
+            BestVariant bestVariant,
+            List<DayContext> days,
+            Map<String, EnforcedParticipant> enforcedByDayName,
+            ConfigRowFullOrEmptyScore rowScoreConfiguration,
+            Integer rowOnlyScoreUpperBound,
+            GeneratorSearchDeadline searchDeadline
+    ) {
+        if (bestVariant.reachedScoreUpperBound || bestVariant.searchDeadlineReached) {
+            return;
+        }
+        if (searchDeadline.hasExpired()) {
+            bestVariant.searchDeadlineReached = true;
+            return;
+        }
+        if (groupIndex == alternativeChoices.size()) {
+            try {
+                GeneratedVariant generatedVariant = generateVariant(
+                        createGenerationInputForGeneration(days, selectedProposals, enforcedByDayName),
+                        rowScoreConfiguration,
+                        searchDeadline
+                );
+                if (bestVariant.value == null || generatedVariant.score() > bestVariant.value.score()) {
+                    bestVariant.value = generatedVariant;
+                }
+                if (generatedVariant.searchDeadlineReached()) {
+                    bestVariant.searchDeadlineReached = true;
+                }
+                if (rowOnlyScoreUpperBound != null && generatedVariant.score() >= rowOnlyScoreUpperBound) {
+                    bestVariant.reachedScoreUpperBound = true;
+                }
+            } catch (GenerationSearchLimitExceededException exception) {
+                bestVariant.searchDeadlineReached = true;
+            } catch (IllegalStateException exception) {
+                bestVariant.lastFailure = exception;
+            }
+            return;
+        }
+
+        // Try submitted options first. They normally make a feasible, high-
+        // scoring schedule available early, which is important when the
+        // exhaustive optimization is bounded by a search deadline.
+        for (Proposal selectedProposal : alternativeChoices.get(groupIndex)) {
+            selectedProposals.add(selectedProposal);
+            searchAlternativeVariants(
+                    groupIndex + 1,
+                    alternativeChoices,
+                    selectedProposals,
+                    bestVariant,
+                    days,
+                    enforcedByDayName,
+                    rowScoreConfiguration,
+                    rowOnlyScoreUpperBound,
+                    searchDeadline
+            );
+            selectedProposals.removeLast();
+        }
+
+        // No option from a group is also valid: participants are not forced to
+        // appear in the schedule merely because they submitted alternatives.
+        searchAlternativeVariants(
+                groupIndex + 1,
+                alternativeChoices,
+                selectedProposals,
+                bestVariant,
+                days,
+                enforcedByDayName,
+                rowScoreConfiguration,
+                rowOnlyScoreUpperBound,
+                searchDeadline
+        );
+    }
+
+    /**
+     * When only the mandatory row score is configured, this is a strict upper
+     * bound for every alternative-proposal combination. Reaching it lets us
+     * avoid rerunning the raw generator for combinations that cannot improve
+     * the result.
+     */
+    private Integer rowOnlyScoreUpperBound(
+            List<DayContext> days,
+            ConfigRowFullOrEmptyScore rowScoreConfiguration
+    ) {
+        if (!pairScoreRepository.findAll().isEmpty()
+                || !candidateUniquenessScoreRepository.findAll().isEmpty()
+                || !participantPrivilegeScoreRepository.findAll().isEmpty()
+                || !pairDiversityScoreRepository.findAll().isEmpty()) {
+            return null;
+        }
+
+        int maximumRowScore = Math.max(
+                0,
+                Math.max(
+                        rowScoreConfiguration.getEmptyRowPoints(),
+                        Math.max(
+                                rowScoreConfiguration.getFullRowAdjacentToIncompletePoints(),
+                                rowScoreConfiguration.getFullRowNotAdjacentToIncompletePoints()
+                        )
+                )
+        );
+        int rowCount = days.stream().mapToInt(day -> day.entries().size()).sum();
+        return Math.multiplyExact(rowCount, maximumRowScore);
+    }
+
+    private GeneratedVariant generateVariant(
+            GenerationInput input,
+            ConfigRowFullOrEmptyScore rowScoreConfiguration,
+            GeneratorSearchDeadline searchDeadline
+    ) {
+        List<AcceptanceFilter> acceptanceFilters = createAcceptanceFilters(input);
+        List<PostGenerationFilter> postGenerationFilters = createPostGenerationFilters(input);
+        List<ScoreFilter> scoreFilters = createScoreFilters(input, rowScoreConfiguration);
+        Generator generator = Generator.forSheet(input.sheet())
+                .withCandidates(input.candidates())
+                .withAcceptanceFilters(acceptanceFilters)
+                .withPostGenerationFilters(postGenerationFilters)
+                .withScoreFilters(scoreFilters)
+                .withEquivalentRowPositions()
+                .withStaticCandidateDomains()
+                .withSearchDeadline(searchDeadline);
+
+        Sheet generatedSheet = generator.generate();
+        int score = generatedSheet.getSubSheets().stream()
+                .mapToInt(subSheet -> scoreFilters.stream()
+                        .mapToInt(filter -> filter.calculateScore(generatedSheet, subSheet))
+                        .sum())
+                .sum();
+        return new GeneratedVariant(input, generatedSheet, score, generator.isSearchDeadlineReached());
+    }
+
+    private GeneratorSearchDeadline generationSearchDeadline() {
+        if (searchTimeLimit == null || searchTimeLimit.isNegative() || searchTimeLimit.isZero()) {
+            throw new ScheduleGenerationException("schedule-generation.search-time-limit must be greater than zero");
+        }
+        return GeneratorSearchDeadline.after(searchTimeLimit);
+    }
+
+    private ScheduleGenerationException cannotSatisfySchedule(long scheduleId, IllegalStateException cause) {
+        if (cause == null) {
+            return new ScheduleGenerationException(
+                    "Schedule " + scheduleId + " cannot satisfy the configured generation constraints"
+            );
+        }
+        return new ScheduleGenerationException(
+                "Schedule " + scheduleId + " cannot satisfy the configured generation constraints: " + cause.getMessage(),
+                cause
+        );
+    }
+
+    private ScheduleGenerationException generationSearchTimedOut(long scheduleId) {
+        return new ScheduleGenerationException(
+                "Schedule " + scheduleId + " could not be generated within the configured search time limit of "
+                        + searchTimeLimit
+        );
+    }
+
+    private String normalizedAlternativeGroup(Proposal proposal) {
+        String alternativeGroup = proposal.getAlternativeGroup();
+        if (alternativeGroup == null) {
+            return null;
+        }
+        String normalizedGroup = alternativeGroup.strip();
+        return normalizedGroup.isEmpty() ? null : normalizedGroup;
+    }
+
+    /**
+     * A requested pair is meaningful only when the requested participant has
+     * submitted a proposal for at least one common row on the same day.  If
+     * that is not the case, the source proposal is ignored rather than making
+     * the whole schedule impossible to generate.  The loop also handles a
+     * chain of requests, e.g. A requests B and B requests an unavailable C.
+     */
+    private GenerationInput createGenerationInputForGeneration(
+            List<DayContext> days,
+            List<Proposal> proposals,
+            Map<String, EnforcedParticipant> enforcedByDayName
+    ) {
+        return createGenerationInput(days, proposalsWithAvailableRequestedPairs(proposals), enforcedByDayName);
+    }
+
+    private List<Proposal> proposalsWithAvailableRequestedPairs(List<Proposal> proposals) {
+        List<Proposal> remaining = new ArrayList<>(proposals);
+        boolean removed;
+        do {
+            List<Proposal> snapshot = List.copyOf(remaining);
+            remaining = snapshot.stream()
+                    .filter(proposal -> proposal.getPairParticipant() == null
+                            || hasCompatibleRequestedPairProposal(proposal, snapshot))
+                    .toList();
+            removed = remaining.size() != snapshot.size();
+        } while (removed);
+        return remaining;
+    }
+
+    private boolean hasCompatibleRequestedPairProposal(Proposal sourceProposal, List<Proposal> proposals) {
+        long requestedParticipantId = sourceProposal.getPairParticipant().getId();
+        long dayId = sourceProposal.getScheduleDay().getId();
+        for (Proposal candidateProposal : proposals) {
+            if (candidateProposal.getParticipant().getId() != requestedParticipantId
+                    || candidateProposal.getScheduleDay().getId() != dayId) {
+                continue;
+            }
+            if (proposalsOverlap(sourceProposal, candidateProposal)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean proposalsOverlap(Proposal first, Proposal second) {
+        return first.getHourStart() <= second.getHourEnd()
+                && second.getHourStart() <= first.getHourEnd();
     }
 
     private ConfigRowFullOrEmptyScore requiredRowScoreConfiguration() {
@@ -196,7 +549,7 @@ public class ScheduleGenerationService {
         Map<Long, Participant> participantsById = new HashMap<>();
         Map<Integer, Map<Long, Set<Integer>>> qualifiedRowsBySubSheet = new HashMap<>();
         Map<DayCandidateKey, IntRange> proposalServiceRanges = new HashMap<>();
-        Map<DayCandidateKey, IntRange> proposalBreakRanges = new HashMap<>();
+        Map<DayCandidateKey, BreakRule> proposalBreakRules = new HashMap<>();
         Map<Integer, Map<Integer, Set<CandidatePair>>> proposalPairRequirements = new HashMap<>();
 
         for (Proposal proposal : proposals) {
@@ -229,13 +582,7 @@ public class ScheduleGenerationService {
                         range(proposal.getServiceLengthStart(), proposal.getServiceLengthEnd(), "proposal service length")
                 );
             }
-            if (hasCompleteRange(proposal.getBreakLengthStart(), proposal.getBreakLengthEnd(), "break length", proposal)) {
-                mergeRange(
-                        proposalBreakRanges,
-                        key,
-                        range(proposal.getBreakLengthStart(), proposal.getBreakLengthEnd(), "proposal break length")
-                );
-            }
+            mergeBreakRule(proposalBreakRules, key, breakRuleForProposal(proposal));
 
             if (proposal.getPairParticipant() != null) {
                 long pairParticipantId = proposal.getPairParticipant().getId();
@@ -262,9 +609,9 @@ public class ScheduleGenerationService {
                 proposalServiceRanges,
                 configuredServiceRanges()
         );
-        Map<DayCandidateKey, IntRange> effectiveBreakRanges = effectiveRanges(
+        Map<DayCandidateKey, BreakRule> effectiveBreakRules = effectiveBreakRules(
                 qualifiedRowsBySubSheet,
-                proposalBreakRanges,
+                proposalBreakRules,
                 configuredBreakRanges()
         );
 
@@ -277,7 +624,7 @@ public class ScheduleGenerationService {
                 qualifiedRowsBySubSheet,
                 limitsBySubSheet(effectiveServiceRanges, false),
                 limitsBySubSheet(effectiveServiceRanges, true),
-                rangesBySubSheet(effectiveBreakRanges),
+                breakRulesBySubSheet(effectiveBreakRules),
                 rowPairRules(proposalPairRequirements),
                 globalPairRules(),
                 candidateUniquenessPoints(qualifiedRowsBySubSheet),
@@ -332,6 +679,106 @@ public class ScheduleGenerationService {
         ranges.put(key, new IntRange(minimum, maximum));
     }
 
+    private BreakRule breakRuleForProposal(Proposal proposal) {
+        boolean hasBreakRange = hasCompleteRange(
+                proposal.getBreakLengthStart(),
+                proposal.getBreakLengthEnd(),
+                "break length",
+                proposal
+        );
+        BreakMode breakMode = proposal.getBreakMode();
+        if (breakMode == null) {
+            // Rows created before the migration are interpreted using the old
+            // convention should one ever be read before Flyway has repaired it.
+            breakMode = hasBreakRange ? BreakMode.REQUIRE_BREAK : BreakMode.NO_BREAK;
+        }
+        IntRange breakRange = hasBreakRange
+                ? range(proposal.getBreakLengthStart(), proposal.getBreakLengthEnd(), "proposal break length")
+                : null;
+
+        return switch (breakMode) {
+            case NO_BREAK -> {
+                if (breakRange != null) {
+                    throw new ScheduleGenerationException(
+                            "Proposal " + proposal.getId() + " forbids breaks but contains a break length"
+                    );
+                }
+                yield new BreakRule(BreakRequirement.NO_BREAK, null);
+            }
+            case REQUIRE_BREAK -> {
+                if (breakRange == null) {
+                    throw new ScheduleGenerationException(
+                            "Proposal " + proposal.getId() + " requires a break but has no break length"
+                    );
+                }
+                yield new BreakRule(BreakRequirement.REQUIRE_BREAK, breakRange);
+            }
+            case INDIFFERENT -> new BreakRule(BreakRequirement.INDIFFERENT, breakRange);
+        };
+    }
+
+    private void mergeBreakRule(
+            Map<DayCandidateKey, BreakRule> rules,
+            DayCandidateKey key,
+            BreakRule additionalRule
+    ) {
+        BreakRule currentRule = rules.get(key);
+        if (currentRule == null) {
+            rules.put(key, additionalRule);
+            return;
+        }
+
+        BreakRequirement requirement = mergeBreakRequirements(currentRule.requirement(), additionalRule.requirement(), key);
+        IntRange breakRange = requirement == BreakRequirement.NO_BREAK
+                ? null
+                : intersectBreakRanges(currentRule.allowedBreakLength(), additionalRule.allowedBreakLength(), key);
+        try {
+            rules.put(key, new BreakRule(requirement, breakRange));
+        } catch (IllegalArgumentException exception) {
+            throw new ScheduleGenerationException(
+                    "Invalid break requirements for participant " + key.candidateId() + " on schedule day " + key.dayIndex(),
+                    exception
+            );
+        }
+    }
+
+    private BreakRequirement mergeBreakRequirements(
+            BreakRequirement first,
+            BreakRequirement second,
+            DayCandidateKey key
+    ) {
+        if (first == second) {
+            return first;
+        }
+        if (first == BreakRequirement.INDIFFERENT) {
+            return second;
+        }
+        if (second == BreakRequirement.INDIFFERENT) {
+            return first;
+        }
+        throw new ScheduleGenerationException(
+                "Conflicting break modes configured for participant " + key.candidateId() + " on schedule day " + key.dayIndex()
+        );
+    }
+
+    private IntRange intersectBreakRanges(IntRange first, IntRange second, DayCandidateKey key) {
+        if (first == null) {
+            return second;
+        }
+        if (second == null) {
+            return first;
+        }
+        int minimum = Math.max(first.minimum(), second.minimum());
+        int maximum = Math.min(first.maximum(), second.maximum());
+        if (minimum > maximum) {
+            throw new ScheduleGenerationException(
+                    "Conflicting break ranges configured for participant " + key.candidateId()
+                            + " on schedule day " + key.dayIndex()
+            );
+        }
+        return new IntRange(minimum, maximum);
+    }
+
     private Map<Long, IntRange> configuredServiceRanges() {
         Map<Long, IntRange> result = new HashMap<>();
         for (ConfigParticipantServiceLength configuration : participantServiceLengthRepository.findAll()) {
@@ -382,6 +829,28 @@ public class ScheduleGenerationService {
         return result;
     }
 
+    private Map<DayCandidateKey, BreakRule> effectiveBreakRules(
+            Map<Integer, Map<Long, Set<Integer>>> qualifiedRowsBySubSheet,
+            Map<DayCandidateKey, BreakRule> proposalRules,
+            Map<Long, IntRange> configuredBreakRanges
+    ) {
+        Map<DayCandidateKey, BreakRule> result = new HashMap<>();
+        qualifiedRowsBySubSheet.forEach((dayIndex, participants) -> participants.keySet().forEach(candidateId -> {
+            DayCandidateKey key = new DayCandidateKey(dayIndex, candidateId);
+            BreakRule proposalRule = proposalRules.get(key);
+            if (proposalRule == null) {
+                return;
+            }
+            IntRange configuredRange = configuredBreakRanges.get(candidateId);
+            if (configuredRange != null && proposalRule.requirement() != BreakRequirement.NO_BREAK) {
+                result.put(key, proposalRule.withAllowedBreakLength(configuredRange));
+            } else {
+                result.put(key, proposalRule);
+            }
+        }));
+        return result;
+    }
+
     private Map<Integer, Map<Long, Integer>> limitsBySubSheet(
             Map<DayCandidateKey, IntRange> ranges,
             boolean maximum
@@ -393,11 +862,11 @@ public class ScheduleGenerationService {
         return result;
     }
 
-    private Map<Integer, Map<Long, IntRange>> rangesBySubSheet(Map<DayCandidateKey, IntRange> ranges) {
-        Map<Integer, Map<Long, IntRange>> result = new HashMap<>();
-        ranges.forEach((key, range) -> result
+    private Map<Integer, Map<Long, BreakRule>> breakRulesBySubSheet(Map<DayCandidateKey, BreakRule> rules) {
+        Map<Integer, Map<Long, BreakRule>> result = new HashMap<>();
+        rules.forEach((key, rule) -> result
                 .computeIfAbsent(key.dayIndex(), ignored -> new HashMap<>())
-                .put(key.candidateId(), range));
+                .put(key.candidateId(), rule));
         return result;
     }
 
@@ -539,14 +1008,15 @@ public class ScheduleGenerationService {
         filters.add(new AcceptanceFilterUniqueInRow());
         filters.add(new AcceptanceFilterPairRules(input.globalPairRules(), input.rowPairRulesBySubSheet()));
         filters.add(new AcceptanceFilterAppearanceLimit(input.maximumServiceLengthsBySubSheet()));
-        filters.add(new AcceptanceFilterGapBetweenBlocks(input.breakRangesBySubSheet()));
         return filters;
     }
 
     private List<PostGenerationFilter> createPostGenerationFilters(GenerationInput input) {
         return List.of(
+                new PostGenerationFilterRowsAreFullOrEmpty(),
                 new PostGenerationFilterPairRules(input.globalPairRules(), input.rowPairRulesBySubSheet()),
-                new PostGenerationFilterMinAppearanceCount(input.minimumServiceLengthsBySubSheet())
+                new PostGenerationFilterMinimumAppearanceWhenAssigned(input.minimumServiceLengthsBySubSheet()),
+                new PostGenerationFilterBreakRules(input.breakRulesBySubSheet())
         );
     }
 
@@ -603,6 +1073,13 @@ public class ScheduleGenerationService {
         return assignedParticipantCells;
     }
 
+    private int assignedParticipantCells(Sheet generatedSheet) {
+        return (int) generatedSheet.getSubSheets().stream()
+                .flatMap(subSheet -> subSheet.getCells().stream())
+                .filter(cell -> cell.getCandidate() != null)
+                .count();
+    }
+
     private Participant participantFor(Candidate candidate, Map<Long, Participant> participantsById) {
         if (candidate == null) {
             return null;
@@ -620,6 +1097,28 @@ public class ScheduleGenerationService {
     private record DayCandidateKey(int dayIndex, long candidateId) {
     }
 
+    private record AlternativeGroupKey(long participantId, String group) {
+    }
+
+    private record AlternativeProposalGroup(long participantId, String group, List<Proposal> proposals) {
+    }
+
+    private record GeneratedVariant(GenerationInput input, Sheet sheet, int score, boolean searchDeadlineReached) {
+        private GeneratedVariant withSearchDeadlineReached() {
+            return new GeneratedVariant(input, sheet, score, true);
+        }
+    }
+
+    private record GeneratedSchedule(List<DayContext> days, GeneratedVariant variant) {
+    }
+
+    private static final class BestVariant {
+        private GeneratedVariant value;
+        private IllegalStateException lastFailure;
+        private boolean reachedScoreUpperBound;
+        private boolean searchDeadlineReached;
+    }
+
     private record GenerationInput(
             Sheet sheet,
             List<Candidate> candidates,
@@ -627,7 +1126,7 @@ public class ScheduleGenerationService {
             Map<Integer, Map<Long, Set<Integer>>> qualifiedRowsBySubSheet,
             Map<Integer, Map<Long, Integer>> minimumServiceLengthsBySubSheet,
             Map<Integer, Map<Long, Integer>> maximumServiceLengthsBySubSheet,
-            Map<Integer, Map<Long, IntRange>> breakRangesBySubSheet,
+            Map<Integer, Map<Long, BreakRule>> breakRulesBySubSheet,
             Map<Integer, Map<Integer, PairRules>> rowPairRulesBySubSheet,
             PairRules globalPairRules,
             Map<Long, Integer> candidateUniquenessPoints,

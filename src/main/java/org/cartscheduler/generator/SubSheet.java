@@ -3,8 +3,6 @@ package org.cartscheduler.generator;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 
 
@@ -58,26 +56,33 @@ public class SubSheet {
     }
 
     public Cell getCell(int x, int y) {
-        return cells.stream()
-            .filter(c -> c.getX() == x)
-            .filter(c -> c.getY() == y)
-            .collect(Collectors.toList())
-            .getFirst();
+        if (x < 0 || x >= sizeX || y < 0 || y >= sizeY) {
+            throw new IndexOutOfBoundsException("Cell coordinates are outside the sub-sheet");
+        }
+        // Cells are created column by column in the constructor.
+        return cells.get(x * sizeY + y);
     }
 
-     public List<Cell> getCells(Integer x, Integer y) {
+    public List<Cell> getCells(Integer x, Integer y) {
+        if (x != null && y != null) {
+            return List.of(getCell(x, y));
+        }
+        if (x == null && y == null) {
+            return new ArrayList<>(cells);
+        }
 
-        Stream<Cell> stream = cells.stream();
-
+        List<Cell> result = new ArrayList<>();
         if (x != null) {
-            stream = stream.filter(c -> c.getX() == x);
+            for (int currentY = 0; currentY < sizeY; currentY++) {
+                result.add(getCell(x, currentY));
+            }
+            return result;
         }
 
-        if (y != null) {
-            stream = stream.filter(c -> c.getY() == y);
+        for (int currentX = 0; currentX < sizeX; currentX++) {
+            result.add(getCell(currentX, y));
         }
-
-        return stream.collect(Collectors.toList());
+        return result;
     }
 
     @Override

@@ -408,6 +408,92 @@ class ApiFunctionalTest {
     }
 
     @Test
+    void shouldRejectOverlappingProposalThroughHttpApiWhenThereIsNoSharedAlternativeGroup() {
+        Fixture fixture = seedFixture();
+        saveProposal(
+                fixture.assignedParticipant(),
+                fixture.agent(),
+                fixture.scheduleDay(),
+                (short) 7,
+                (short) 15
+        );
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+        CreateProposalRequest request = new CreateProposalRequest(
+                fixture.assignedParticipant().getId(),
+                fixture.scheduleDay().getId(),
+                7,
+                15,
+                4,
+                6,
+                1,
+                2
+        );
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/proposals",
+                HttpMethod.POST,
+                authorizedRequest(jwt, request),
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(proposalRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldExposeSelectionPermissionsAndCreateProposalWithPairBreakModeAndAlternativeGroup() {
+        Fixture fixture = seedFixture();
+        Participant selectedPairParticipant = saveParticipant("Selected pair", "selected-pair@example.test");
+        fixture.schedule().setAccessibleParticipants(List.of(
+                fixture.assignedParticipant(),
+                fixture.directlyScheduledParticipant(),
+                selectedPairParticipant
+        ));
+        scheduleRepository.saveAndFlush(fixture.schedule());
+        fixture.agent().setAssignedParticipants(new ArrayList<>(List.of(
+                fixture.assignedParticipant(),
+                selectedPairParticipant
+        )));
+        fixture.agent().setAllowPairSelection(true);
+        fixture.agent().setAllowAlternativeGroupSelection(true);
+        participantRepository.saveAndFlush(fixture.agent());
+
+        RestAuthResponse authentication = authenticate(fixture.invitationToken());
+        assertThat(authentication.isAllowPairSelection()).isTrue();
+        assertThat(authentication.isAllowAlternativeGroupSelection()).isTrue();
+        CreateProposalRequest request = new CreateProposalRequest(
+                fixture.assignedParticipant().getId(),
+                fixture.scheduleDay().getId(),
+                7,
+                15,
+                4,
+                6,
+                1,
+                2
+        );
+        request.setPairParticipantId(selectedPairParticipant.getId());
+        request.setBreakMode(2);
+        request.setAlternativeGroup("once-a-week");
+
+        ResponseEntity<ProposalDto> response = restTemplate.exchange(
+                "/api/proposals",
+                HttpMethod.POST,
+                authorizedRequest(authentication.getJwtToken(), request),
+                ProposalDto.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getPairParticipantId()).isEqualTo(selectedPairParticipant.getId());
+        assertThat(response.getBody().getBreakMode()).isEqualTo(2);
+        assertThat(response.getBody().getAlternativeGroup()).isEqualTo("once-a-week");
+        Proposal savedProposal = proposalRepository.findById(response.getBody().getId()).orElseThrow();
+        assertThat(savedProposal.getPairParticipant().getId()).isEqualTo(selectedPairParticipant.getId());
+        assertThat(savedProposal.getBreakMode().getCode()).isEqualTo((short) 2);
+        assertThat(savedProposal.getAlternativeGroup()).isEqualTo("once-a-week");
+    }
+
+    @Test
     void shouldCreateProposalForSingleScheduleHourThroughHttpApi() {
         Fixture fixture = seedFixture();
         String jwt = authenticate(fixture.invitationToken()).getJwtToken();
