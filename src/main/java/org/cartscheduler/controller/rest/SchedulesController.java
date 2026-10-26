@@ -1,8 +1,10 @@
 package org.cartscheduler.controller.rest;
 
+import org.cartscheduler.dto.rest.response.ParticipantDto;
 import org.cartscheduler.dto.rest.response.ScheduleDayDto;
 import org.cartscheduler.dto.rest.response.ScheduleDto;
 import org.cartscheduler.impl.RestUserDetails;
+import org.cartscheduler.service.ParticipantService;
 import org.cartscheduler.service.ScheduleDayService;
 import org.cartscheduler.service.ScheduleService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -26,6 +29,9 @@ public class SchedulesController {
     @Autowired
     ScheduleDayService scheduleDayService;
 
+    @Autowired
+    ParticipantService participantService;
+
     @GetMapping("/{scheduleId}/")
     public ScheduleDto getSchedule(@AuthenticationPrincipal RestUserDetails userDetails, @PathVariable("scheduleId") Long id) {
         if (!scheduleService.checkScheduleAccess(userDetails, id)) {
@@ -36,12 +42,40 @@ public class SchedulesController {
     }
 
     @GetMapping("/{scheduleId}/days/")
-    public List<ScheduleDayDto> getDaysForSchedule(@AuthenticationPrincipal RestUserDetails userDetails, @PathVariable("scheduleId") Long scheduleId) {
+    public List<ScheduleDayDto> getDaysForSchedule(
+            @AuthenticationPrincipal RestUserDetails userDetails,
+            @PathVariable("scheduleId") Long scheduleId,
+            @RequestParam(value = "participantId", required = false) Long participantId
+    ) {
         if (!scheduleService.checkScheduleAccess(userDetails, scheduleId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
+        if (participantId != null) {
+            participantService.assertAgentCanManageParticipantForSchedule(
+                    userDetails.getId(),
+                    participantId,
+                    scheduleId
+            );
+            return scheduleDayService.prepareScheduleDayDtoListForScheduleAndParticipant(scheduleId, participantId);
+        }
+
         return scheduleDayService.prepareScheduleDayDtoListForSchedule(scheduleId);
+    }
+
+    @GetMapping("/{scheduleId}/participants/")
+    public List<ParticipantDto> getParticipantsForSchedule(
+            @AuthenticationPrincipal RestUserDetails userDetails,
+            @PathVariable("scheduleId") Long scheduleId
+    ) {
+        if (!scheduleService.checkScheduleAccess(userDetails, scheduleId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+
+        return participantService.prepareAssignedParticipantDtoListWithProposalStatusForAgentParticipantAndSchedule(
+                userDetails.getId(),
+                scheduleId
+        );
     }
 
     @GetMapping("/{scheduleId}/days/{dayId}/")

@@ -110,6 +110,14 @@ class RepositoryIntegrationIT {
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '7' AND success = true",
                 Integer.class
         );
+        Integer scheduleDateMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '8' AND success = true",
+                Integer.class
+        );
+        Integer proposalStatusIndexMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '9' AND success = true",
+                Integer.class
+        );
         Integer participantsTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'participants'",
@@ -158,6 +166,18 @@ class RepositoryIntegrationIT {
                         "AND column_name = 'new_schedule_autoinvitement_enabled'",
                 Integer.class
         );
+        Integer scheduleDateColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'schedule_days' " +
+                        "AND column_name = 'schedule_date'",
+                Integer.class
+        );
+        Integer proposalStatusIndexCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.statistics " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'proposals' " +
+                        "AND index_name = 'idx_proposals_schedule_day_participant'",
+                Integer.class
+        );
         Integer generationConfigurationTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'config_generation'",
@@ -199,6 +219,8 @@ class RepositoryIntegrationIT {
         assertThat(generationConfigurationMigrationCount).isEqualTo(1);
         assertThat(calendarConfigurationMigrationCount).isEqualTo(1);
         assertThat(participantAutomationMigrationCount).isEqualTo(1);
+        assertThat(scheduleDateMigrationCount).isEqualTo(1);
+        assertThat(proposalStatusIndexMigrationCount).isEqualTo(1);
         assertThat(participantsTableCount).isEqualTo(1);
         assertThat(allowPairSelectionColumnCount).isEqualTo(1);
         assertThat(breakModeColumnCount).isEqualTo(1);
@@ -207,6 +229,8 @@ class RepositoryIntegrationIT {
         assertThat(participantEnabledColumnCount).isEqualTo(1);
         assertThat(participantAutoassignmentColumnCount).isEqualTo(1);
         assertThat(participantAutoinvitementColumnCount).isEqualTo(1);
+        assertThat(scheduleDateColumnCount).isEqualTo(1);
+        assertThat(proposalStatusIndexCount).isEqualTo(2);
         assertThat(generationConfigurationTableCount).isEqualTo(1);
         assertThat(participantRulesTableCount).isEqualTo(1);
         assertThat(candidateAvailabilityScoresTableCount).isEqualTo(1);
@@ -354,6 +378,55 @@ class RepositoryIntegrationIT {
         assertThat(result)
                 .extracting(Proposal::getId)
                 .containsExactly(firstProposal.getId(), secondProposal.getId());
+    }
+
+    @Test
+    void shouldFindProposalStatusIdsOnlyForOwnProposalsInRequestedSchedule() {
+        Participant author = saveParticipant("author@example.test");
+        Participant participantWithProposal = saveParticipant("with-proposal@example.test");
+        Participant participantWithOnlyOtherScheduleProposal = saveParticipant("other-schedule@example.test");
+        Participant participantSelectedOnlyAsPair = saveParticipant("pair-only@example.test");
+        Participant anotherParticipant = saveParticipant("another@example.test");
+        Schedule requestedSchedule = saveSchedule("Requested schedule", participantWithProposal);
+        Schedule anotherSchedule = saveSchedule("Another schedule", participantWithOnlyOtherScheduleProposal);
+        ScheduleDay firstRequestedDay = saveScheduleDay(requestedSchedule, "Monday", (short) 1);
+        ScheduleDay secondRequestedDay = saveScheduleDay(requestedSchedule, "Tuesday", (short) 2);
+        ScheduleDay otherScheduleDay = saveScheduleDay(anotherSchedule, "Wednesday", (short) 3);
+
+        Proposal ownProposal = saveProposal(participantWithProposal, author, firstRequestedDay, (short) 8, (short) 10);
+        ownProposal.setPairParticipant(participantSelectedOnlyAsPair);
+        proposalRepository.saveAndFlush(ownProposal);
+        saveProposal(anotherParticipant, author, secondRequestedDay, (short) 8, (short) 10);
+        saveProposal(
+                participantWithOnlyOtherScheduleProposal,
+                author,
+                otherScheduleDay,
+                (short) 8,
+                (short) 10
+        );
+        entityManager.clear();
+
+        List<Long> participantIdsWithProposals = proposalRepository.findParticipantIdsWithProposalsForSchedule(
+                requestedSchedule.getId(),
+                List.of(
+                        participantWithProposal.getId(),
+                        participantWithOnlyOtherScheduleProposal.getId(),
+                        participantSelectedOnlyAsPair.getId()
+                )
+        );
+        List<Long> proposalDayIds = proposalRepository.findScheduleDayIdsWithProposalsForParticipantAndSchedule(
+                participantWithProposal.getId(),
+                requestedSchedule.getId()
+        );
+        List<Long> pairOnlyProposalDayIds = proposalRepository
+                .findScheduleDayIdsWithProposalsForParticipantAndSchedule(
+                        participantSelectedOnlyAsPair.getId(),
+                        requestedSchedule.getId()
+                );
+
+        assertThat(participantIdsWithProposals).containsExactly(participantWithProposal.getId());
+        assertThat(proposalDayIds).containsExactly(firstRequestedDay.getId());
+        assertThat(pairOnlyProposalDayIds).isEmpty();
     }
 
     @Test

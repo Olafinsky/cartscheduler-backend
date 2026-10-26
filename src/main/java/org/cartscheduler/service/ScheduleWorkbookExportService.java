@@ -241,6 +241,9 @@ public class ScheduleWorkbookExportService {
     }
 
     private LocalDate dateFromName(ScheduleDay day) {
+        if (day.getScheduleDate() != null) {
+            return day.getScheduleDate();
+        }
         String name = day.getName();
         if (name == null || name.length() < 10) {
             return null;

@@ -124,6 +124,19 @@ class ScheduleCalendarGenerationServiceTest {
                         (short) 1,
                         (short) 7
                 );
+        assertThat(savedSchedule.getScheduleDays())
+                .extracting(ScheduleDay::getScheduleDate)
+                .containsExactly(
+                        LocalDate.of(2026, 11, 2),
+                        LocalDate.of(2026, 11, 8),
+                        LocalDate.of(2026, 11, 15),
+                        LocalDate.of(2026, 11, 16),
+                        LocalDate.of(2026, 11, 22),
+                        LocalDate.of(2026, 11, 23),
+                        LocalDate.of(2026, 11, 29),
+                        LocalDate.of(2026, 11, 30),
+                        LocalDate.of(2026, 12, 6)
+                );
         assertThat(savedSchedule.getScheduleDays().getFirst().getScheduleEntries())
                 .extracting(entry -> entry.getHour(), entry -> entry.getName())
                 .containsExactly(

@@ -129,6 +129,7 @@ public class ScheduleCalendarGenerationService {
             ScheduleDay scheduleDay = new ScheduleDay();
             scheduleDay.setSchedule(schedule);
             scheduleDay.setDayOfWeek((short) date.getDayOfWeek().getValue());
+            scheduleDay.setScheduleDate(date);
             scheduleDay.setName(scheduleDayName(date));
             scheduleDays.add(scheduleDay);
         }

@@ -16,7 +16,9 @@ public interface ParticipantRepository extends JpaRepository<Participant, Long> 
             + "OR participant.newScheduleAutoinvitementEnabled = true)")
     List<Participant> findEnabledForNewScheduleAutomation();
 
-    @Query("SELECT p FROM Participant p JOIN p.agentParticipants ap JOIN p.schedules s WHERE ap.id = ?1 AND s.id  = ?2")
+    @Query("SELECT p FROM Participant p JOIN p.agentParticipants ap JOIN p.schedules s "
+            + "WHERE ap.id = ?1 AND s.id = ?2 "
+            + "ORDER BY LOWER(p.name) ASC, p.id ASC")
     List<Participant> findAssignedParticipants(Long participantId, Long scheduleId);
 
     @Query("SELECT COUNT(participant) FROM Participant participant " +
