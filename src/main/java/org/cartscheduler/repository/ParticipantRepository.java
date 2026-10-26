@@ -10,6 +10,12 @@ import java.util.Optional;
 public interface ParticipantRepository extends JpaRepository<Participant, Long> {
     Optional<Participant> findByEmail(String email);
 
+    @Query("SELECT participant FROM Participant participant "
+            + "WHERE participant.enabled = true "
+            + "AND (participant.newScheduleAutoassignmentEnabled = true "
+            + "OR participant.newScheduleAutoinvitementEnabled = true)")
+    List<Participant> findEnabledForNewScheduleAutomation();
+
     @Query("SELECT p FROM Participant p JOIN p.agentParticipants ap JOIN p.schedules s WHERE ap.id = ?1 AND s.id  = ?2")
     List<Participant> findAssignedParticipants(Long participantId, Long scheduleId);
 

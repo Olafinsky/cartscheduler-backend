@@ -102,6 +102,14 @@ class RepositoryIntegrationIT {
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '5' AND success = true",
                 Integer.class
         );
+        Integer calendarConfigurationMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '6' AND success = true",
+                Integer.class
+        );
+        Integer participantAutomationMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '7' AND success = true",
+                Integer.class
+        );
         Integer participantsTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'participants'",
@@ -132,6 +140,24 @@ class RepositoryIntegrationIT {
                         "AND column_name = 'alternative_group'",
                 Integer.class
         );
+        Integer participantEnabledColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'is_enabled'",
+                Integer.class
+        );
+        Integer participantAutoassignmentColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'new_schedule_autoassignment_enabled'",
+                Integer.class
+        );
+        Integer participantAutoinvitementColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'new_schedule_autoinvitement_enabled'",
+                Integer.class
+        );
         Integer generationConfigurationTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'config_generation'",
@@ -145,6 +171,16 @@ class RepositoryIntegrationIT {
         Integer candidateAvailabilityScoresTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'config_candidate_availability_scores'",
+                Integer.class
+        );
+        Integer scheduleDaysConfigurationTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_schedule_days'",
+                Integer.class
+        );
+        Integer restrictedDatesConfigurationTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_schedule_restricted_dates'",
                 Integer.class
         );
         Integer obsoleteRowScoreTableCount = jdbcTemplate.queryForObject(
@@ -161,14 +197,21 @@ class RepositoryIntegrationIT {
         assertThat(pairAndBreakMigrationCount).isEqualTo(1);
         assertThat(alternativeGroupMigrationCount).isEqualTo(1);
         assertThat(generationConfigurationMigrationCount).isEqualTo(1);
+        assertThat(calendarConfigurationMigrationCount).isEqualTo(1);
+        assertThat(participantAutomationMigrationCount).isEqualTo(1);
         assertThat(participantsTableCount).isEqualTo(1);
         assertThat(allowPairSelectionColumnCount).isEqualTo(1);
         assertThat(breakModeColumnCount).isEqualTo(1);
         assertThat(allowAlternativeGroupSelectionColumnCount).isEqualTo(1);
         assertThat(alternativeGroupColumnCount).isEqualTo(1);
+        assertThat(participantEnabledColumnCount).isEqualTo(1);
+        assertThat(participantAutoassignmentColumnCount).isEqualTo(1);
+        assertThat(participantAutoinvitementColumnCount).isEqualTo(1);
         assertThat(generationConfigurationTableCount).isEqualTo(1);
         assertThat(participantRulesTableCount).isEqualTo(1);
         assertThat(candidateAvailabilityScoresTableCount).isEqualTo(1);
+        assertThat(scheduleDaysConfigurationTableCount).isEqualTo(1);
+        assertThat(restrictedDatesConfigurationTableCount).isEqualTo(1);
         assertThat(obsoleteRowScoreTableCount).isZero();
         assertThat(globalConfigurationRowCount).isEqualTo(1);
     }

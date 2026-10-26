@@ -25,6 +25,15 @@ public class Participant {
     @NotBlank
     private String email;
 
+    @Column(name = "is_enabled", nullable = false)
+    private boolean enabled = true;
+
+    @Column(name = "new_schedule_autoassignment_enabled", nullable = false)
+    private boolean newScheduleAutoassignmentEnabled;
+
+    @Column(name = "new_schedule_autoinvitement_enabled", nullable = false)
+    private boolean newScheduleAutoinvitementEnabled;
+
     @Column(name = "allow_pair_selection", nullable = false)
     private boolean allowPairSelection;
 
@@ -52,6 +61,9 @@ public class Participant {
         id = participant.getId();
         name = participant.getName();
         email = participant.getEmail();
+        enabled = participant.isEnabled();
+        newScheduleAutoassignmentEnabled = participant.isNewScheduleAutoassignmentEnabled();
+        newScheduleAutoinvitementEnabled = participant.isNewScheduleAutoinvitementEnabled();
         allowPairSelection = participant.isAllowPairSelection();
         allowAlternativeGroupSelection = participant.isAllowAlternativeGroupSelection();
     }
