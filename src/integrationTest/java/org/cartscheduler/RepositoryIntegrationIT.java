@@ -4,19 +4,19 @@ import jakarta.persistence.EntityManager;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.ParticipantAccessToken;
 import org.cartscheduler.entity.Proposal;
-import org.cartscheduler.entity.ConfigRowFullOrEmptyScore;
+import org.cartscheduler.entity.ConfigGeneration;
 import org.cartscheduler.entity.Schedule;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
 import org.cartscheduler.repository.ParticipantAccessTokenRepository;
 import org.cartscheduler.repository.ParticipantRepository;
 import org.cartscheduler.repository.ProposalRepository;
-import org.cartscheduler.repository.ConfigRowFullOrEmptyScoreRepository;
+import org.cartscheduler.repository.ConfigGenerationRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
 import org.cartscheduler.repository.ScheduleRepository;
-import org.cartscheduler.service.ScheduleGenerationResult;
-import org.cartscheduler.service.ScheduleGenerationService;
+import org.cartscheduler.service.generation.ScheduleGenerationResult;
+import org.cartscheduler.service.generation.ScheduleGenerationService;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,7 +79,7 @@ class RepositoryIntegrationIT {
     private ScheduleEntryRepository scheduleEntryRepository;
 
     @Autowired
-    private ConfigRowFullOrEmptyScoreRepository rowFullOrEmptyScoreRepository;
+    private ConfigGenerationRepository configGenerationRepository;
 
     @Autowired
     private ScheduleGenerationService scheduleGenerationService;
@@ -96,6 +96,10 @@ class RepositoryIntegrationIT {
         );
         Integer alternativeGroupMigrationCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '4' AND success = true",
+                Integer.class
+        );
+        Integer generationConfigurationMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '5' AND success = true",
                 Integer.class
         );
         Integer participantsTableCount = jdbcTemplate.queryForObject(
@@ -128,15 +132,45 @@ class RepositoryIntegrationIT {
                         "AND column_name = 'alternative_group'",
                 Integer.class
         );
+        Integer generationConfigurationTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_generation'",
+                Integer.class
+        );
+        Integer participantRulesTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_participant_rules'",
+                Integer.class
+        );
+        Integer candidateAvailabilityScoresTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_candidate_availability_scores'",
+                Integer.class
+        );
+        Integer obsoleteRowScoreTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_row_full_or_empty_scores'",
+                Integer.class
+        );
+        Integer globalConfigurationRowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM config_generation WHERE id = 1",
+                Integer.class
+        );
 
         assertThat(initialMigrationCount).isEqualTo(1);
         assertThat(pairAndBreakMigrationCount).isEqualTo(1);
         assertThat(alternativeGroupMigrationCount).isEqualTo(1);
+        assertThat(generationConfigurationMigrationCount).isEqualTo(1);
         assertThat(participantsTableCount).isEqualTo(1);
         assertThat(allowPairSelectionColumnCount).isEqualTo(1);
         assertThat(breakModeColumnCount).isEqualTo(1);
         assertThat(allowAlternativeGroupSelectionColumnCount).isEqualTo(1);
         assertThat(alternativeGroupColumnCount).isEqualTo(1);
+        assertThat(generationConfigurationTableCount).isEqualTo(1);
+        assertThat(participantRulesTableCount).isEqualTo(1);
+        assertThat(candidateAvailabilityScoresTableCount).isEqualTo(1);
+        assertThat(obsoleteRowScoreTableCount).isZero();
+        assertThat(globalConfigurationRowCount).isEqualTo(1);
     }
 
     @Test
@@ -288,11 +322,13 @@ class RepositoryIntegrationIT {
         ScheduleEntry entry = saveScheduleEntry(day, "08:00", (short) 8);
         saveProposal(firstParticipant, firstParticipant, day, (short) 8, (short) 8);
         saveProposal(secondParticipant, secondParticipant, day, (short) 8, (short) 8);
-        ConfigRowFullOrEmptyScore rowScore = new ConfigRowFullOrEmptyScore();
-        rowScore.setEmptyRowPoints(0);
-        rowScore.setFullRowAdjacentToIncompletePoints(10);
-        rowScore.setFullRowNotAdjacentToIncompletePoints(10);
-        rowFullOrEmptyScoreRepository.saveAndFlush(rowScore);
+        ConfigGeneration generationConfiguration = configGenerationRepository
+                .findById(ConfigGeneration.SINGLETON_ID)
+                .orElseThrow();
+        generationConfiguration.setEmptyRowPoints(0);
+        generationConfiguration.setFullRowAdjacentToIncompletePoints(10);
+        generationConfiguration.setFullRowNotAdjacentToIncompletePoints(10);
+        configGenerationRepository.saveAndFlush(generationConfiguration);
         entityManager.clear();
 
         ScheduleGenerationResult result = scheduleGenerationService.generate(schedule.getId());

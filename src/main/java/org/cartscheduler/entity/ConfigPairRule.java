@@ -25,14 +25,17 @@ public class ConfigPairRule {
     private long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "participant_1_id")
+    @JoinColumn(name = "participant_1_id", nullable = false)
     private Participant participant1;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "participant_2_id")
+    @JoinColumn(name = "participant_2_id", nullable = false)
     private Participant participant2;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "rule_type")
-    private ConfigPairRuleType ruleType;
+    @Column(name = "compatibility_mode", nullable = false)
+    private ConfigPairCompatibilityMode compatibilityMode = ConfigPairCompatibilityMode.ANY;
+
+    @Column(name = "score_points", nullable = false)
+    private int scorePoints;
 }

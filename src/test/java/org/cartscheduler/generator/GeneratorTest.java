@@ -1,6 +1,7 @@
 package org.cartscheduler.generator;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,6 +23,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GeneratorTest {
+
+    @Test
+    void snapshotsCandidateConfigurationBeforeSearchStarts() {
+        List<Candidate> configuredCandidates = new ArrayList<>(List.of(new Candidate(1L)));
+        Generator generator = Generator.forSheet(new Sheet(List.of(new SubSheet(1, 1))))
+                .withCandidates(configuredCandidates)
+                .withScoreFilters(List.of(new ScoreFilterCandidatePoints(Map.of(1L, 1))));
+        configuredCandidates.clear();
+
+        Sheet generatedSheet = generator.generate();
+
+        Candidate assignedCandidate = generatedSheet.getSubSheets().getFirst().getCell(0, 0).getCandidate();
+        assertThat(assignedCandidate).isNotNull();
+        assertThat(assignedCandidate.getId()).isEqualTo(1L);
+    }
 
     @Test
     void evaluatesCompletePostGenerationFiltersOnlyForCompleteAssignments() {

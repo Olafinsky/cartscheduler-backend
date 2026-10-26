@@ -1,8 +1,8 @@
 package org.cartscheduler;
 
-import org.cartscheduler.service.ScheduleGenerationResult;
-import org.cartscheduler.service.ScheduleGenerationPreview;
-import org.cartscheduler.service.ScheduleGenerationService;
+import org.cartscheduler.service.generation.ScheduleGenerationPreview;
+import org.cartscheduler.service.generation.ScheduleGenerationResult;
+import org.cartscheduler.service.generation.ScheduleGenerationService;
 import org.cartscheduler.service.ScheduleWorkbookExportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

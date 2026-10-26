@@ -31,6 +31,7 @@ import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleRepository;
+import org.cartscheduler.service.generation.ScheduleGenerationService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

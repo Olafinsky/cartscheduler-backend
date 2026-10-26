@@ -19,10 +19,10 @@ public class Generator {
     private static final int DEADLINE_CHECK_INTERVAL = 256;
 
     private Sheet sheet;
-    private List<PostGenerationFilter> postGenerationFilters = new ArrayList<>();
-    private List<AcceptanceFilter> acceptanceFilters = new ArrayList<>();
-    private List<ScoreFilter> scoreFilters = new ArrayList<>();
-    private List<Candidate> candidates = new ArrayList<>();
+    private List<PostGenerationFilter> postGenerationFilters = List.of();
+    private List<AcceptanceFilter> acceptanceFilters = List.of();
+    private List<ScoreFilter> scoreFilters = List.of();
+    private List<Candidate> candidates = List.of();
     private List<Candidate> activeCandidates = List.of();
     private GeneratorSearchDeadline searchDeadline = GeneratorSearchDeadline.unlimited();
     private GeneratorSearchDeadline activeSearchDeadline = GeneratorSearchDeadline.unlimited();
@@ -43,27 +43,31 @@ public class Generator {
 
     public static Generator forSheet(Sheet sheet) {
         Generator instance = new Generator();
-        instance.sheet = sheet.copy();
+        instance.sheet = Objects.requireNonNull(sheet, "sheet must not be null").copy();
         return instance;
     }
 
     public Generator withPostGenerationFilters(List<PostGenerationFilter> postGenerationFilters) {
-        this.postGenerationFilters = postGenerationFilters;
+        this.postGenerationFilters = List.copyOf(
+                Objects.requireNonNull(postGenerationFilters, "postGenerationFilters must not be null")
+        );
         return this;
     }
 
     public Generator withAcceptanceFilters(List<AcceptanceFilter> acceptanceFilters) {
-        this.acceptanceFilters = acceptanceFilters;
+        this.acceptanceFilters = List.copyOf(
+                Objects.requireNonNull(acceptanceFilters, "acceptanceFilters must not be null")
+        );
         return this;
     }
 
     public Generator withScoreFilters(List<ScoreFilter> scoreFilters) {
-        this.scoreFilters = scoreFilters;
+        this.scoreFilters = List.copyOf(Objects.requireNonNull(scoreFilters, "scoreFilters must not be null"));
         return this;
     }
 
     public Generator withCandidates(List<Candidate> candidates) {
-        this.candidates = candidates;
+        this.candidates = List.copyOf(Objects.requireNonNull(candidates, "candidates must not be null"));
         return this;
     }
 

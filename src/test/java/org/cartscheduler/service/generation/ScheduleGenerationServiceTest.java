@@ -1,31 +1,27 @@
-package org.cartscheduler.service;
+package org.cartscheduler.service.generation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.cartscheduler.entity.BreakMode;
-import org.cartscheduler.entity.ConfigParticipantBreakLength;
-import org.cartscheduler.entity.ConfigParticipantServiceLength;
-import org.cartscheduler.entity.ConfigRowFullOrEmptyScore;
+import org.cartscheduler.entity.ConfigGeneration;
+import org.cartscheduler.entity.ConfigParticipantRule;
 import org.cartscheduler.entity.EnforcedParticipant;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.Proposal;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
-import org.cartscheduler.repository.ConfigCandidateUniquenessScoreRepository;
-import org.cartscheduler.repository.ConfigPairDiversityScoreRepository;
+import org.cartscheduler.repository.ConfigCandidateAvailabilityScoreRepository;
+import org.cartscheduler.repository.ConfigGenerationRepository;
 import org.cartscheduler.repository.ConfigPairRuleRepository;
-import org.cartscheduler.repository.ConfigPairScoreRepository;
-import org.cartscheduler.repository.ConfigParticipantBreakLengthRepository;
-import org.cartscheduler.repository.ConfigParticipantPrivilegeScoreRepository;
-import org.cartscheduler.repository.ConfigParticipantServiceLengthRepository;
-import org.cartscheduler.repository.ConfigRowFullOrEmptyScoreRepository;
+import org.cartscheduler.repository.ConfigParticipantRuleRepository;
 import org.cartscheduler.repository.EnforcedParticipantRepository;
 import org.cartscheduler.repository.ProposalRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -36,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class ScheduleGenerationServiceTest {
@@ -52,39 +49,44 @@ class ScheduleGenerationServiceTest {
     private EnforcedParticipantRepository enforcedParticipantRepository;
 
     @Mock
-    private ConfigRowFullOrEmptyScoreRepository rowFullOrEmptyScoreRepository;
+    private ConfigGenerationRepository generationRepository;
 
     @Mock
-    private ConfigPairScoreRepository pairScoreRepository;
-
-    @Mock
-    private ConfigCandidateUniquenessScoreRepository candidateUniquenessScoreRepository;
-
-    @Mock
-    private ConfigParticipantPrivilegeScoreRepository participantPrivilegeScoreRepository;
-
-    @Mock
-    private ConfigPairDiversityScoreRepository pairDiversityScoreRepository;
+    private ConfigParticipantRuleRepository participantRuleRepository;
 
     @Mock
     private ConfigPairRuleRepository pairRuleRepository;
 
     @Mock
-    private ConfigParticipantBreakLengthRepository participantBreakLengthRepository;
+    private ConfigCandidateAvailabilityScoreRepository candidateAvailabilityScoreRepository;
 
-    @Mock
-    private ConfigParticipantServiceLengthRepository participantServiceLengthRepository;
-
-    @InjectMocks
     private ScheduleGenerationService scheduleGenerationService;
+
+    @BeforeEach
+    void setUp() {
+        ScheduleGenerationConfigurationLoader configurationLoader = new ScheduleGenerationConfigurationLoader(
+                generationRepository,
+                participantRuleRepository,
+                pairRuleRepository,
+                candidateAvailabilityScoreRepository
+        );
+        scheduleGenerationService = new ScheduleGenerationService(
+                scheduleDayRepository,
+                scheduleEntryRepository,
+                proposalRepository,
+                enforcedParticipantRepository,
+                configurationLoader,
+                new ScheduleGenerationInputFactory()
+        );
+    }
 
     @Test
     void requiresTheMandatoryRowScoreConfiguration() {
-        given(rowFullOrEmptyScoreRepository.findAll()).willReturn(List.of());
+        given(generationRepository.findById(ConfigGeneration.SINGLETON_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> scheduleGenerationService.generate(10L))
                 .isInstanceOf(ScheduleGenerationException.class)
-                .hasMessageContaining("config_row_full_or_empty_scores");
+                .hasMessageContaining("config_generation");
 
         verifyNoInteractions(scheduleDayRepository, proposalRepository, scheduleEntryRepository);
     }
@@ -151,6 +153,31 @@ class ScheduleGenerationServiceTest {
         assertThat(preview).isEqualTo(new ScheduleGenerationPreview(10L, 2, 10, false));
         assertThat(day.getScheduleEntries().getFirst().getParticipant1()).isNull();
         assertThat(day.getScheduleEntries().getFirst().getParticipant2()).isNull();
+        verifyNoInteractions(scheduleEntryRepository);
+    }
+
+    @Test
+    void awardsPairDiversityOnlyOnceAcrossAllScheduleDays() {
+        ScheduleDay monday = day(100L, "Monday", (short) 8);
+        ScheduleDay tuesday = day(101L, "Tuesday", (short) 8);
+        tuesday.setDayOfWeek((short) 2);
+        Participant first = participant(1L);
+        Participant second = participant(2L);
+        stubRequiredConfiguration(5);
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(monday, tuesday));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                proposal(first, monday, (short) 8, (short) 8),
+                proposal(second, monday, (short) 8, (short) 8),
+                proposal(first, tuesday, (short) 8, (short) 8),
+                proposal(second, tuesday, (short) 8, (short) 8)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        ScheduleGenerationPreview preview = scheduleGenerationService.preview(10L);
+
+        assertThat(preview.assignedParticipantCells()).isEqualTo(4);
+        assertThat(preview.score()).isEqualTo(25);
         verifyNoInteractions(scheduleEntryRepository);
     }
 
@@ -351,6 +378,30 @@ class ScheduleGenerationServiceTest {
     }
 
     @Test
+    void loadsOneConfigurationSnapshotForAllAlternativeProposalVariants() {
+        ScheduleDay day = day(100L, "Monday", (short) 8);
+        Participant alternativeParticipant = participant(18L);
+        Participant otherParticipant = participant(2L);
+        Proposal firstOption = proposal(alternativeParticipant, day, (short) 8, (short) 8);
+        firstOption.setAlternativeGroup("one-option");
+        Proposal secondOption = proposal(alternativeParticipant, day, (short) 8, (short) 8);
+        secondOption.setAlternativeGroup("one-option");
+        stubRequiredConfiguration();
+        stubOptionalEmptyConfigurations();
+        given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
+        given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
+                firstOption,
+                secondOption,
+                proposal(otherParticipant, day, (short) 8, (short) 8)
+        ));
+        given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
+
+        scheduleGenerationService.generate(10L);
+
+        verify(pairRuleRepository, times(1)).findAll();
+    }
+
+    @Test
     void fillsEveryEntryOfAMatchingDayWithEnforcedParticipants() {
         ScheduleDay day = day(100L, "Monday", (short) 8, (short) 9);
         Participant first = participant(11L);
@@ -381,18 +432,15 @@ class ScheduleGenerationServiceTest {
         ScheduleDay day = day(100L, "Monday", (short) 8, (short) 9, (short) 10, (short) 11);
         Participant configuredParticipant = participant(1L);
         Participant otherParticipant = participant(2L);
-        ConfigParticipantServiceLength serviceLength = new ConfigParticipantServiceLength();
-        serviceLength.setParticipant(configuredParticipant);
-        serviceLength.setServiceLengthStart((short) 2);
-        serviceLength.setServiceLengthEnd((short) 2);
-        ConfigParticipantBreakLength breakLength = new ConfigParticipantBreakLength();
-        breakLength.setParticipant(configuredParticipant);
-        breakLength.setBreakLengthStart((short) 2);
-        breakLength.setBreakLengthEnd((short) 2);
+        ConfigParticipantRule participantRule = new ConfigParticipantRule();
+        participantRule.setParticipant(configuredParticipant);
+        participantRule.setServiceLengthMin((short) 2);
+        participantRule.setServiceLengthMax((short) 2);
+        participantRule.setBreakLengthMin((short) 2);
+        participantRule.setBreakLengthMax((short) 2);
         stubRequiredConfiguration();
         stubOptionalEmptyConfigurations();
-        given(participantServiceLengthRepository.findAll()).willReturn(List.of(serviceLength));
-        given(participantBreakLengthRepository.findAll()).willReturn(List.of(breakLength));
+        given(participantRuleRepository.findAll()).willReturn(List.of(participantRule));
         given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(day));
         Proposal configuredProposal = proposal(
                 configuredParticipant,
@@ -485,21 +533,23 @@ class ScheduleGenerationServiceTest {
     }
 
     private void stubRequiredConfiguration() {
-        ConfigRowFullOrEmptyScore configuration = new ConfigRowFullOrEmptyScore();
+        stubRequiredConfiguration(null);
+    }
+
+    private void stubRequiredConfiguration(Integer uniquePairPoints) {
+        ConfigGeneration configuration = new ConfigGeneration();
+        configuration.setId(ConfigGeneration.SINGLETON_ID);
         configuration.setEmptyRowPoints(0);
         configuration.setFullRowAdjacentToIncompletePoints(10);
         configuration.setFullRowNotAdjacentToIncompletePoints(10);
-        given(rowFullOrEmptyScoreRepository.findAll()).willReturn(List.of(configuration));
+        configuration.setUniquePairPoints(uniquePairPoints);
+        given(generationRepository.findById(ConfigGeneration.SINGLETON_ID)).willReturn(Optional.of(configuration));
     }
 
     private void stubOptionalEmptyConfigurations() {
-        given(pairScoreRepository.findAll()).willReturn(List.of());
-        given(candidateUniquenessScoreRepository.findAll()).willReturn(List.of());
-        given(participantPrivilegeScoreRepository.findAll()).willReturn(List.of());
-        given(pairDiversityScoreRepository.findAll()).willReturn(List.of());
         given(pairRuleRepository.findAll()).willReturn(List.of());
-        given(participantBreakLengthRepository.findAll()).willReturn(List.of());
-        given(participantServiceLengthRepository.findAll()).willReturn(List.of());
+        given(participantRuleRepository.findAll()).willReturn(List.of());
+        given(candidateAvailabilityScoreRepository.findAll()).willReturn(List.of());
     }
 
     private ScheduleDay day(long id, String name, short... hours) {

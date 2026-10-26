@@ -9,22 +9,23 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+/** Points per occupied cell for a candidate with a matching availability count. */
 @Entity
 @Getter
 @Setter
-@Table(name = "config_candidate_uniqueness_scores")
-public class ConfigCandidateUniquenessScore {
+@Table(name = "config_candidate_availability_scores")
+public class ConfigCandidateAvailabilityScore {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private long id;
 
-    @Column(name = "proposal_appearance_count_from")
-    private int proposalAppearanceCountFrom;
+    @Column(name = "appearance_count_from", nullable = false)
+    private int appearanceCountFrom;
 
-    @Column(name = "proposal_appearance_count_to")
-    private int proposalAppearanceCountTo;
+    @Column(name = "appearance_count_to", nullable = false)
+    private int appearanceCountTo;
 
-    @Column(name = "points")
+    @Column(name = "points", nullable = false)
     private int points;
 }

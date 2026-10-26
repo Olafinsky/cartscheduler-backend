@@ -1,4 +1,4 @@
-package org.cartscheduler.service;
+package org.cartscheduler.service.generation;
 
 /** Signals an invalid configuration or an unsatisfiable schedule-generation request. */
 public class ScheduleGenerationException extends RuntimeException {
