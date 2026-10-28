@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Edycja konfiguracji generowania')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="mb-4"><h1 class="page-heading h2 mb-1">Edycja konfiguracji generowania</h1><p class="text-secondary mb-0">Wszystkie wartości punktowe domyślnie wynoszą 0.</p></div>
+    <section class="card content-card"><div class="card-body p-4">
+        <form th:object="${form}" th:action="@{/admin/config/generation/{id}/edit(id=${configurationId})}" method="post" novalidate autocomplete="off">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <div class="row g-3">
+                <div class="col-md-6"><label class="form-label" for="emptyRowPoints">Punkty za pusty wiersz</label><input id="emptyRowPoints" type="number" step="1" class="form-control" th:field="*{emptyRowPoints}" th:classappend="${#fields.hasErrors('emptyRowPoints')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{emptyRowPoints}"></div></div>
+                <div class="col-md-6"><label class="form-label" for="fullRowAdjacentToIncompletePoints">Punkty za pełny wiersz obok niepełnego</label><input id="fullRowAdjacentToIncompletePoints" type="number" step="1" class="form-control" th:field="*{fullRowAdjacentToIncompletePoints}" th:classappend="${#fields.hasErrors('fullRowAdjacentToIncompletePoints')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{fullRowAdjacentToIncompletePoints}"></div></div>
+                <div class="col-md-6"><label class="form-label" for="fullRowNotAdjacentToIncompletePoints">Punkty za pełny wiersz</label><input id="fullRowNotAdjacentToIncompletePoints" type="number" step="1" class="form-control" th:field="*{fullRowNotAdjacentToIncompletePoints}" th:classappend="${#fields.hasErrors('fullRowNotAdjacentToIncompletePoints')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{fullRowNotAdjacentToIncompletePoints}"></div></div>
+                <div class="col-md-6"><label class="form-label" for="uniquePairPoints">Punkty za różnorodność par</label><input id="uniquePairPoints" type="number" step="1" class="form-control" th:field="*{uniquePairPoints}" th:classappend="${#fields.hasErrors('uniquePairPoints')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{uniquePairPoints}"></div></div>
+            </div>
+            <div class="mt-4 d-flex gap-2"><button type="submit" class="btn btn-primary">Zapisz</button><a class="btn btn-outline-secondary" th:href="@{/admin/config/generation}">Anuluj</a></div>
+        </form>
+    </div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

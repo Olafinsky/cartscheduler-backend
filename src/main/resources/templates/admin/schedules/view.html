@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Podgląd grafiku')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><div><h1 class="page-heading h2 mb-1">Podgląd grafiku</h1><p class="text-secondary mb-0" th:text="${schedule.name}"></p></div><div class="d-flex gap-2"><a class="btn btn-outline-secondary" th:href="@{/admin/schedules}">Wróć do listy</a><a class="btn btn-primary" th:href="@{/admin/schedules/{id}/edit(id=${schedule.id})}"><i class="bi bi-pencil me-1"></i>Edytuj</a></div></div>
+    <section class="card content-card mb-4"><div class="table-responsive"><table class="table mb-0"><tbody>
+        <tr><th scope="row" class="w-25">ID</th><td th:text="${schedule.id}"></td></tr>
+        <tr><th scope="row">Nazwa</th><td th:text="${schedule.name}"></td></tr>
+        <tr><th scope="row">Liczba dni</th><td th:text="${#lists.size(schedule.days)}"></td></tr>
+    </tbody></table></div></section>
+    <section class="card content-card mb-4"><div class="card-body"><h2 class="h5 page-heading">Przypisani uczestnicy</h2>
+        <ul class="mb-0" th:if="${!#lists.isEmpty(accessibleParticipants)}"><li th:each="participant : ${accessibleParticipants}" th:text="${participant.name + ' (' + participant.email + ')'}"></li></ul>
+        <p class="text-secondary mb-0" th:if="${#lists.isEmpty(accessibleParticipants)}">Brak przypisanych uczestników.</p>
+    </div></section>
+    <section class="card content-card"><div class="card-body border-bottom"><h2 class="h5 page-heading mb-0">Dni grafiku i godziny służby</h2></div><div class="table-responsive"><table class="table table-hover mb-0">
+        <thead class="table-light"><tr><th>Nazwa dnia</th><th>Data</th><th>Dzień tygodnia (ISO)</th><th>Godziny służby</th></tr></thead>
+        <tbody>
+        <tr th:each="day : ${schedule.days}">
+            <td th:text="${day.name}"></td>
+            <td th:text="${day.date == null ? '—' : #temporals.format(day.date, 'dd.MM.yyyy')}"></td>
+            <td th:text="${day.dayOfWeek}"></td>
+            <td class="schedule-hours"><span th:if="${#lists.isEmpty(day.serviceHours)}" class="text-secondary">Brak wpisów</span><span th:each="hour, stat : ${day.serviceHours}" th:text="${hour + ':00' + (stat.last ? '' : ', ')}"></span></td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(schedule.days)}"><td colspan="4" class="text-center text-secondary py-4">Ten grafik nie zawiera dni.</td></tr>
+        </tbody>
+    </table></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

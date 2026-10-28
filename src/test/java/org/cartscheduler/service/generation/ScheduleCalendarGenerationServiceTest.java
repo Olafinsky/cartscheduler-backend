@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import org.cartscheduler.entity.ConfigScheduleDay;
 import org.cartscheduler.entity.ConfigScheduleRestrictedDate;
@@ -175,11 +176,12 @@ class ScheduleCalendarGenerationServiceTest {
             schedule.setId(15L);
             return schedule;
         });
-        Instant beforeGeneration = Instant.now();
+        // ParticipantAccessToken persists java.util.Date, whose precision is milliseconds.
+        Instant beforeGeneration = Instant.now().truncatedTo(ChronoUnit.MILLIS);
 
         scheduleCalendarGenerationService.generate(LocalDate.of(2026, 10, 26));
 
-        Instant afterGeneration = Instant.now();
+        Instant afterGeneration = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         ArgumentCaptor<Iterable<ScheduleAccess>> accessCaptor = iterableCaptor();
         verify(scheduleAccessRepository).saveAll(accessCaptor.capture());
         assertThat(accessCaptor.getValue())

@@ -3,6 +3,7 @@ package org.cartscheduler;
 import org.cartscheduler.dto.rest.request.RestAuthRequest;
 import org.cartscheduler.dto.rest.request.CreateProposalRequest;
 import org.cartscheduler.dto.rest.response.ParticipantDto;
+import org.cartscheduler.dto.rest.response.ProposalPrefillDto;
 import org.cartscheduler.dto.rest.response.ProposalDto;
 import org.cartscheduler.dto.rest.response.RestAuthResponse;
 import org.cartscheduler.dto.rest.response.ScheduleDayDto;
@@ -464,6 +465,100 @@ class ApiFunctionalTest {
         assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
         assertThat(proposalRepository.existsById(expectedProposal.getId())).isFalse();
         assertThat(forbiddenListResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void shouldReturnReadOnlyProposalPrefillThroughHttpApi() {
+        Fixture fixture = seedFixture();
+        ScheduleDay sourceDay = new ScheduleDay();
+        sourceDay.setSchedule(fixture.schedule());
+        sourceDay.setDayOfWeek((short) 1);
+        sourceDay.setScheduleDate(LocalDate.of(2026, 10, 26));
+        sourceDay.setName("Previous Monday");
+        sourceDay = scheduleDayRepository.saveAndFlush(sourceDay);
+        saveScheduleEntry(sourceDay, "07:00", (short) 7);
+        saveScheduleEntry(sourceDay, "15:00", (short) 15);
+        Proposal sourceProposal = saveProposal(
+                fixture.assignedParticipant(),
+                fixture.agent(),
+                sourceDay,
+                (short) 7,
+                (short) 15
+        );
+        sourceProposal.setServiceLengthStart((short) 4);
+        sourceProposal.setServiceLengthEnd((short) 6);
+        sourceProposal.setBreakMode(org.cartscheduler.entity.BreakMode.REQUIRE_BREAK);
+        sourceProposal.setBreakLengthStart((short) 1);
+        sourceProposal.setBreakLengthEnd((short) 2);
+        proposalRepository.saveAndFlush(sourceProposal);
+        long proposalCountBeforeRequest = proposalRepository.count();
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+
+        ResponseEntity<ProposalPrefillDto> response = restTemplate.exchange(
+                "/api/proposals/schedule-day/{scheduleDayId}/participant/{participantId}/prefill",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                ProposalPrefillDto.class,
+                fixture.scheduleDay().getId(),
+                fixture.assignedParticipant().getId()
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().isAvailable()).isTrue();
+        assertThat(response.getBody().getSource())
+                .extracting(
+                        source -> source.getScheduleId(),
+                        source -> source.getScheduleDayId(),
+                        source -> source.getDate(),
+                        source -> source.getDayOfWeek(),
+                        source -> source.getProposalId(),
+                        source -> source.getProposalIndex(),
+                        source -> source.getProposalCount()
+                )
+                .containsExactly(
+                        fixture.schedule().getId(),
+                        sourceDay.getId(),
+                        LocalDate.of(2026, 10, 26),
+                        java.time.DayOfWeek.MONDAY,
+                        sourceProposal.getId(),
+                        0,
+                        1
+                );
+        assertThat(response.getBody().getValues())
+                .extracting(
+                        values -> values.getHourStart(),
+                        values -> values.getHourEnd(),
+                        values -> values.getServiceLengthStart(),
+                        values -> values.getServiceLengthEnd(),
+                        values -> values.getBreakMode(),
+                        values -> values.getBreakLengthStart(),
+                        values -> values.getBreakLengthEnd(),
+                        values -> values.getAlternativeGroup(),
+                        values -> values.getPairParticipantId()
+                )
+                .containsExactly(7, 15, 4, 6, 1, 1, 2, null, null);
+        assertThat(proposalRepository.count()).isEqualTo(proposalCountBeforeRequest);
+    }
+
+    @Test
+    void shouldReturnUnavailablePrefillAsOkWhenNoHistoricalSourceExists() {
+        Fixture fixture = seedFixture();
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/proposals/schedule-day/{scheduleDayId}/participant/{participantId}/prefill",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                String.class,
+                fixture.scheduleDay().getId(),
+                fixture.assignedParticipant().getId()
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody())
+                .contains("\"available\":false", "\"source\":null", "\"values\":null");
     }
 
     @Test

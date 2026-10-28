@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Konfiguracja generowania')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="mb-4">
+        <h1 class="page-heading h2 mb-1">Konfiguracja generowania</h1>
+        <p class="text-secondary mb-0">Globalna punktacja używana podczas generowania grafiku.</p>
+    </div>
+    <div th:replace="~{fragments/layout :: alerts}"></div>
+    <section class="card content-card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>ID</th><th>Pusty wiersz</th><th>Pełny obok niepełnego</th><th>Pełny wiersz</th><th>Różnorodność par</th><th class="actions-column">Akcje</th></tr></thead>
+        <tbody>
+        <tr th:each="configuration : ${configurations}">
+            <td th:text="${configuration.id}"></td>
+            <td th:text="${configuration.emptyRowPoints}"></td>
+            <td th:text="${configuration.fullRowAdjacentToIncompletePoints}"></td>
+            <td th:text="${configuration.fullRowNotAdjacentToIncompletePoints}"></td>
+            <td th:text="${configuration.uniquePairPoints}"></td>
+            <td class="actions-column">
+                <a class="btn btn-sm btn-outline-primary icon-action" th:href="@{/admin/config/generation/{id}(id=${configuration.id})}" aria-label="Podgląd" title="Podgląd"><i class="bi bi-eye"></i></a>
+                <a class="btn btn-sm btn-outline-secondary icon-action" th:href="@{/admin/config/generation/{id}/edit(id=${configuration.id})}" aria-label="Edytuj" title="Edytuj"><i class="bi bi-pencil"></i></a>
+            </td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(configurations)}"><td colspan="6" class="text-center text-secondary py-4">Brak konfiguracji generowania.</td></tr>
+        </tbody>
+    </table></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

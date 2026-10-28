@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Podgląd konfiguracji generowania')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div><h1 class="page-heading h2 mb-1">Konfiguracja generowania</h1><p class="text-secondary mb-0">Globalna punktacja generatora.</p></div>
+        <div class="d-flex gap-2"><a class="btn btn-outline-secondary" th:href="@{/admin/config/generation}">Wróć do listy</a><a class="btn btn-primary" th:href="@{/admin/config/generation/{id}/edit(id=${configuration.id})}"><i class="bi bi-pencil me-1"></i>Edytuj</a></div>
+    </div>
+    <section class="card content-card"><div class="table-responsive"><table class="table mb-0"><tbody>
+        <tr><th scope="row" class="w-50">ID</th><td th:text="${configuration.id}"></td></tr>
+        <tr><th scope="row">Punkty za pusty wiersz</th><td th:text="${configuration.emptyRowPoints}"></td></tr>
+        <tr><th scope="row">Punkty za pełny wiersz obok niepełnego</th><td th:text="${configuration.fullRowAdjacentToIncompletePoints}"></td></tr>
+        <tr><th scope="row">Punkty za pełny wiersz bez niepełnego sąsiada</th><td th:text="${configuration.fullRowNotAdjacentToIncompletePoints}"></td></tr>
+        <tr><th scope="row">Punkty za różnorodność par</th><td th:text="${configuration.uniquePairPoints}"></td></tr>
+    </tbody></table></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

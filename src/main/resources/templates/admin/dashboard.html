@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Podsumowanie propozycji')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container-fluid py-4 px-lg-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+        <div>
+            <h1 class="page-heading h2 mb-1">Podsumowanie propozycji</h1>
+            <p class="text-secondary mb-0">Wszystkie propozycje uczestników w wybranym grafiku.</p>
+        </div>
+        <form th:if="${!#lists.isEmpty(summary.schedules)}" method="get" th:action="@{/admin}" class="d-flex align-items-center gap-2">
+            <label for="scheduleId" class="form-label mb-0 text-nowrap">Grafik:</label>
+            <select id="scheduleId" name="scheduleId" class="form-select" onchange="this.form.submit()">
+                <option th:each="schedule : ${summary.schedules}" th:value="${schedule.id}" th:text="${schedule.name}" th:selected="${schedule.id == summary.selectedScheduleId}"></option>
+            </select>
+        </form>
+    </div>
+
+    <section th:if="${!summary.hasSelectedSchedule()}" class="card content-card"><div class="card-body text-center py-5 text-secondary"><i class="bi bi-calendar-x fs-2 d-block mb-2"></i>Brak grafików do wyświetlenia.</div></section>
+
+    <section th:if="${summary.hasSelectedSchedule()}" class="card content-card">
+        <div class="card-body border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <h2 class="h5 page-heading mb-0" th:text="${summary.selectedScheduleName}"></h2>
+            <div class="d-flex flex-wrap align-items-center justify-content-end gap-3">
+                <div th:if="${!#lists.isEmpty(summary.days)}" class="summary-font-size-control">
+                    <label class="small text-secondary text-nowrap mb-0" for="summaryFontSize">Tekst tabeli:</label>
+                    <select id="summaryFontSize" class="form-select form-select-sm" aria-label="Rozmiar tekstu w tabeli propozycji">
+                        <option value="standard">Standardowy</option>
+                        <option value="compact">Mniejszy</option>
+                    </select>
+                </div>
+                <span class="small text-secondary" th:text="${#lists.size(summary.participants) + ' uczestników · ' + #lists.size(summary.days) + ' dni'}"></span>
+            </div>
+        </div>
+        <div th:if="${#lists.isEmpty(summary.days)}" class="card-body text-center text-secondary py-5">Wybrany grafik nie zawiera dni.</div>
+
+        <div th:if="${!#lists.isEmpty(summary.days)}" class="summary-desktop">
+            <div class="summary-scroll-top" data-summary-scroll-top tabindex="0" role="region" aria-label="Przewijanie poziome tabeli propozycji" hidden>
+                <div class="summary-scroll-spacer" data-summary-scroll-spacer></div>
+            </div>
+            <div class="summary-scroll" data-summary-scroll-body tabindex="0" role="region" aria-label="Tabela propozycji — przewijanie poziome">
+                <table id="summaryTable" class="table table-bordered table-hover table-striped summary-table">
+                    <thead class="table-dark"><tr>
+                        <th scope="col" class="participant-column">Uczestnik</th>
+                        <th scope="col" th:each="day : ${summary.days}">
+                            <span th:text="${day.name}"></span>
+                            <small class="d-block opacity-75" th:if="${day.date != null}" th:text="${#temporals.format(day.date, 'dd.MM.yyyy')}"></small>
+                        </th>
+                    </tr></thead>
+                    <tbody>
+                    <tr th:each="row : ${summary.participants}">
+                        <th scope="row" class="participant-column" th:text="${row.participantName}"></th>
+                        <td th:each="day : ${summary.days}">
+                            <span class="proposal-entry" th:each="proposal : ${row.proposalsByDay[day.id]}">
+                                <span th:text="${proposal.hours}"></span><span> (</span><span th:if="${proposal.serviceLength != null}"><i class="bi bi-clock" aria-hidden="true"></i> <span th:text="${proposal.serviceLength}"></span></span><span th:if="${proposal.breakLength != null}">, <i class="bi bi-hourglass-split" aria-hidden="true"></i> <span th:text="${proposal.breakLength}"></span></span><span th:if="${proposal.alternativeGroup != null}">, gr. <span th:text="${proposal.alternativeGroup}"></span></span><span th:if="${proposal.pairParticipantName != null}">, z <span th:text="${proposal.pairParticipantName}"></span></span><span>)</span>
+                            </span>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(summary.participants)}"><td th:attr="colspan=${#lists.size(summary.days) + 1}" class="text-center text-secondary py-4">Brak uczestników.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div th:if="${!#lists.isEmpty(summary.days)}" class="summary-mobile p-3">
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                <button id="previousDay" type="button" class="btn btn-outline-primary icon-action" aria-label="Poprzedni dzień"><i class="bi bi-chevron-left"></i></button>
+                <strong id="mobileDayLabel" class="text-center flex-grow-1"></strong>
+                <button id="nextDay" type="button" class="btn btn-outline-primary icon-action" aria-label="Następny dzień"><i class="bi bi-chevron-right"></i></button>
+            </div>
+            <div class="mobile-day-panel" th:each="day, dayStat : ${summary.days}"
+                 th:attr="data-active=${dayStat.index == 0},data-day-label=${day.name + (day.date == null ? '' : ' — ' + #temporals.format(day.date, 'dd.MM.yyyy'))}">
+                <table class="table table-bordered table-striped mobile-summary-table mb-0">
+                    <thead class="table-dark"><tr><th>Uczestnik</th><th>Propozycje</th></tr></thead>
+                    <tbody>
+                    <tr th:each="row : ${summary.participants}">
+                        <th scope="row" th:text="${row.participantName}"></th>
+                        <td>
+                            <span class="proposal-entry" th:each="proposal : ${row.proposalsByDay[day.id]}">
+                                <span th:text="${proposal.hours}"></span><span> (</span><span th:if="${proposal.serviceLength != null}"><i class="bi bi-clock" aria-hidden="true"></i> <span th:text="${proposal.serviceLength}"></span></span><span th:if="${proposal.breakLength != null}">, <i class="bi bi-hourglass-split" aria-hidden="true"></i> <span th:text="${proposal.breakLength}"></span></span><span th:if="${proposal.alternativeGroup != null}">, gr. <span th:text="${proposal.alternativeGroup}"></span></span><span th:if="${proposal.pairParticipantName != null}">, z <span th:text="${proposal.pairParticipantName}"></span></span><span>)</span>
+                            </span>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(summary.participants)}"><td colspan="2" class="text-center text-secondary py-4">Brak uczestników.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+<script th:if="${summary.hasSelectedSchedule() and !#lists.isEmpty(summary.days)}">
+    (() => {
+        const summaryTable = document.getElementById('summaryTable');
+        const topScroll = document.querySelector('[data-summary-scroll-top]');
+        const topScrollSpacer = document.querySelector('[data-summary-scroll-spacer]');
+        const tableScroll = document.querySelector('[data-summary-scroll-body]');
+        const fontSizeSelect = document.getElementById('summaryFontSize');
+
+        const refreshTopScrollbar = () => {
+            if (!summaryTable || !topScroll || !topScrollSpacer || !tableScroll) {
+                return;
+            }
+            topScrollSpacer.style.width = `${summaryTable.scrollWidth}px`;
+            const hasHorizontalOverflow = summaryTable.scrollWidth > tableScroll.clientWidth;
+            topScroll.hidden = !hasHorizontalOverflow;
+            if (hasHorizontalOverflow) {
+                topScroll.scrollLeft = tableScroll.scrollLeft;
+            }
+        };
+
+        if (topScroll && tableScroll) {
+            topScroll.addEventListener('scroll', () => {
+                if (tableScroll.scrollLeft !== topScroll.scrollLeft) {
+                    tableScroll.scrollLeft = topScroll.scrollLeft;
+                }
+            });
+            tableScroll.addEventListener('scroll', () => {
+                if (topScroll.scrollLeft !== tableScroll.scrollLeft) {
+                    topScroll.scrollLeft = tableScroll.scrollLeft;
+                }
+            });
+            window.addEventListener('resize', refreshTopScrollbar);
+            if (window.ResizeObserver && summaryTable) {
+                new ResizeObserver(refreshTopScrollbar).observe(summaryTable);
+            }
+        }
+
+        if (fontSizeSelect && summaryTable) {
+            const fontSizeStorageKey = 'cartscheduler.admin.dashboard.font-size';
+            const applyFontSize = (value, persist) => {
+                const compact = value === 'compact';
+                summaryTable.classList.toggle('summary-table--compact', compact);
+                fontSizeSelect.value = compact ? 'compact' : 'standard';
+                if (persist) {
+                    try {
+                        window.localStorage.setItem(fontSizeStorageKey, fontSizeSelect.value);
+                    } catch (ignored) {
+                        // The table remains usable when browser storage is unavailable.
+                    }
+                }
+                window.requestAnimationFrame(refreshTopScrollbar);
+            };
+
+            try {
+                applyFontSize(window.localStorage.getItem(fontSizeStorageKey), false);
+            } catch (ignored) {
+                applyFontSize('standard', false);
+            }
+            fontSizeSelect.addEventListener('change', () => applyFontSize(fontSizeSelect.value, true));
+        } else {
+            refreshTopScrollbar();
+        }
+
+        const panels = Array.from(document.querySelectorAll('.mobile-day-panel'));
+        const previous = document.getElementById('previousDay');
+        const next = document.getElementById('nextDay');
+        const label = document.getElementById('mobileDayLabel');
+        let current = 0;
+
+        const render = () => {
+            panels.forEach((panel, index) => { panel.dataset.active = String(index === current); });
+            label.textContent = panels[current].dataset.dayLabel;
+            previous.disabled = current === 0;
+            next.disabled = current === panels.length - 1;
+        };
+        previous.addEventListener('click', () => { if (current > 0) { current--; render(); } });
+        next.addEventListener('click', () => { if (current < panels.length - 1) { current++; render(); } });
+        render();
+    })();
+</script>
+</body>
+</html>

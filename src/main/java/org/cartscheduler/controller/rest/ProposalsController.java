@@ -2,8 +2,10 @@ package org.cartscheduler.controller.rest;
 
 import jakarta.validation.Valid;
 import org.cartscheduler.dto.rest.request.CreateProposalRequest;
+import org.cartscheduler.dto.rest.response.ProposalPrefillDto;
 import org.cartscheduler.dto.rest.response.ProposalDto;
 import org.cartscheduler.impl.RestUserDetails;
+import org.cartscheduler.service.ProposalPrefillService;
 import org.cartscheduler.service.ProposalService;
 import org.cartscheduler.service.ScheduleService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,9 @@ public class ProposalsController {
 
     @Autowired
     ProposalService proposalService;
+
+    @Autowired
+    ProposalPrefillService proposalPrefillService;
 
     @Autowired
     ScheduleService scheduleService;
@@ -44,6 +49,24 @@ public class ProposalsController {
         }
 
         return proposalService.prepareProposalDto(
+                participantId,
+                scheduleDayId,
+                userDetails.getId(),
+                userDetails.getScheduleId()
+        );
+    }
+
+    @GetMapping("/schedule-day/{scheduleDayId}/participant/{participantId}/prefill")
+    public ProposalPrefillDto prefill(
+            @AuthenticationPrincipal RestUserDetails userDetails,
+            @PathVariable("scheduleDayId") Long scheduleDayId,
+            @PathVariable("participantId") Long participantId
+    ) {
+        if (!scheduleService.checkScheduleAccess(userDetails, userDetails.getScheduleId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+
+        return proposalPrefillService.preparePrefill(
                 participantId,
                 scheduleDayId,
                 userDetails.getId(),

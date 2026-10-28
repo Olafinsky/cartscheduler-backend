@@ -1,6 +1,9 @@
 package org.cartscheduler;
 
 import jakarta.persistence.EntityManager;
+import org.cartscheduler.entity.ConfigPairCompatibilityMode;
+import org.cartscheduler.entity.ConfigPairRule;
+import org.cartscheduler.entity.ConfigParticipantRule;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.ParticipantAccessToken;
 import org.cartscheduler.entity.Proposal;
@@ -12,6 +15,8 @@ import org.cartscheduler.repository.ParticipantAccessTokenRepository;
 import org.cartscheduler.repository.ParticipantRepository;
 import org.cartscheduler.repository.ProposalRepository;
 import org.cartscheduler.repository.ConfigGenerationRepository;
+import org.cartscheduler.repository.ConfigPairRuleRepository;
+import org.cartscheduler.repository.ConfigParticipantRuleRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
 import org.cartscheduler.repository.ScheduleRepository;
@@ -30,6 +35,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -80,6 +86,12 @@ class RepositoryIntegrationIT {
 
     @Autowired
     private ConfigGenerationRepository configGenerationRepository;
+
+    @Autowired
+    private ConfigParticipantRuleRepository configParticipantRuleRepository;
+
+    @Autowired
+    private ConfigPairRuleRepository configPairRuleRepository;
 
     @Autowired
     private ScheduleGenerationService scheduleGenerationService;
@@ -378,6 +390,88 @@ class RepositoryIntegrationIT {
         assertThat(result)
                 .extracting(Proposal::getId)
                 .containsExactly(firstProposal.getId(), secondProposal.getId());
+    }
+
+    @Test
+    void shouldLoadParticipantsForAdministrationRuleViews() {
+        Participant firstParticipant = saveParticipant("first-rule@example.test");
+        firstParticipant.setName("Anna");
+        participantRepository.saveAndFlush(firstParticipant);
+        Participant secondParticipant = saveParticipant("second-rule@example.test");
+        secondParticipant.setName("Jan");
+        participantRepository.saveAndFlush(secondParticipant);
+
+        ConfigParticipantRule participantRule = new ConfigParticipantRule();
+        participantRule.setParticipant(firstParticipant);
+        participantRule.setPrivilegePoints(0);
+        configParticipantRuleRepository.saveAndFlush(participantRule);
+
+        ConfigPairRule pairRule = new ConfigPairRule();
+        pairRule.setParticipant1(firstParticipant);
+        pairRule.setParticipant2(secondParticipant);
+        pairRule.setCompatibilityMode(ConfigPairCompatibilityMode.ANY);
+        configPairRuleRepository.saveAndFlush(pairRule);
+        entityManager.clear();
+
+        ConfigParticipantRule loadedParticipantRule = configParticipantRuleRepository
+                .findAllWithParticipant()
+                .getFirst();
+        ConfigPairRule loadedPairRule = configPairRuleRepository
+                .findWithParticipantsById(pairRule.getId())
+                .orElseThrow();
+
+        assertThat(Hibernate.isInitialized(loadedParticipantRule.getParticipant())).isTrue();
+        assertThat(loadedParticipantRule.getParticipant().getName()).isEqualTo("Anna");
+        assertThat(Hibernate.isInitialized(loadedPairRule.getParticipant1())).isTrue();
+        assertThat(Hibernate.isInitialized(loadedPairRule.getParticipant2())).isTrue();
+        assertThat(loadedPairRule.getParticipant1().getName()).isEqualTo("Anna");
+        assertThat(loadedPairRule.getParticipant2().getName()).isEqualTo("Jan");
+    }
+
+    @Test
+    void shouldFindOnlyEarlierAccessiblePrefillSourceDaysForTheSameParticipantIdentity() {
+        Participant agent = saveParticipant("prefill-agent@example.test");
+        Participant participant = saveParticipant("prefill-participant@example.test");
+        Participant differentIdentity = saveParticipant("prefill-different@example.test");
+        Schedule currentSchedule = saveSchedule("Current", participant);
+        Schedule earlierSchedule = saveSchedule("Earlier", participant);
+        Schedule inaccessibleSchedule = saveSchedule("Inaccessible", differentIdentity);
+        agent.setAssignedParticipants(new ArrayList<>(List.of(participant, differentIdentity)));
+        participantRepository.saveAndFlush(agent);
+
+        ScheduleDay currentSourceDay = saveScheduleDay(currentSchedule, "Current Monday", (short) 1);
+        currentSourceDay.setScheduleDate(LocalDate.of(2026, 10, 26));
+        scheduleDayRepository.saveAndFlush(currentSourceDay);
+        ScheduleDay earlierSourceDay = saveScheduleDay(earlierSchedule, "Earlier Monday", (short) 1);
+        earlierSourceDay.setScheduleDate(LocalDate.of(2026, 10, 19));
+        scheduleDayRepository.saveAndFlush(earlierSourceDay);
+        ScheduleDay futureDay = saveScheduleDay(currentSchedule, "Future Monday", (short) 1);
+        futureDay.setScheduleDate(LocalDate.of(2026, 11, 9));
+        scheduleDayRepository.saveAndFlush(futureDay);
+        ScheduleDay differentIdentityDay = saveScheduleDay(inaccessibleSchedule, "Different identity", (short) 1);
+        differentIdentityDay.setScheduleDate(LocalDate.of(2026, 10, 26));
+        scheduleDayRepository.saveAndFlush(differentIdentityDay);
+        saveProposal(participant, agent, currentSourceDay, (short) 8, (short) 10);
+        saveProposal(participant, agent, earlierSourceDay, (short) 8, (short) 10);
+        saveProposal(participant, agent, futureDay, (short) 8, (short) 10);
+        saveProposal(differentIdentity, agent, differentIdentityDay, (short) 8, (short) 10);
+        entityManager.clear();
+
+        List<ScheduleDay> currentSources = proposalRepository.findPrefillSourceDaysInSchedule(
+                participant.getId(),
+                agent.getId(),
+                LocalDate.of(2026, 11, 2),
+                currentSchedule.getId()
+        );
+        List<ScheduleDay> earlierSources = proposalRepository.findPrefillSourceDaysInEarlierSchedules(
+                participant.getId(),
+                agent.getId(),
+                LocalDate.of(2026, 11, 2),
+                currentSchedule.getId()
+        );
+
+        assertThat(currentSources).extracting(ScheduleDay::getId).containsExactly(currentSourceDay.getId());
+        assertThat(earlierSources).extracting(ScheduleDay::getId).containsExactly(earlierSourceDay.getId());
     }
 
     @Test
