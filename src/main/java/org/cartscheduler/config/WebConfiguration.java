@@ -10,10 +10,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 public class WebConfiguration {
 
-    /**
-     * Used directly by Spring Security, including when the schedule generator
-     * is started as a non-web console application.
-     */
+    /** Used by Spring Security when the application runs as a servlet web app. */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

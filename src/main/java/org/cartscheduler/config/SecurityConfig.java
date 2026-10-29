@@ -5,6 +5,7 @@ import org.cartscheduler.impl.AdminUserDetails;
 import org.cartscheduler.request_filter.JwtAuthFilter;
 import org.cartscheduler.service.AdminUserDetailsService;
 import org.cartscheduler.service.AdminUserService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -27,6 +28,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
  */
 @Configuration
 @EnableWebSecurity
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
