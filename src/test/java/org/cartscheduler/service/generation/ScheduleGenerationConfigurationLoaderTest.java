@@ -2,16 +2,19 @@ package org.cartscheduler.service.generation;
 
 import java.util.List;
 import java.util.Optional;
-import org.cartscheduler.entity.ConfigCandidateAvailabilityScore;
+import org.cartscheduler.entity.ConfigCandidateAssignmentScore;
 import org.cartscheduler.entity.ConfigGeneration;
+import org.cartscheduler.entity.ConfigPairAssignmentScore;
 import org.cartscheduler.entity.ConfigPairCompatibilityMode;
 import org.cartscheduler.entity.ConfigPairRule;
 import org.cartscheduler.entity.ConfigParticipantRule;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.generator.CandidatePair;
 import org.cartscheduler.generator.IntRange;
-import org.cartscheduler.repository.ConfigCandidateAvailabilityScoreRepository;
+import org.cartscheduler.generator.OccurrenceScoreRule;
+import org.cartscheduler.repository.ConfigCandidateAssignmentScoreRepository;
 import org.cartscheduler.repository.ConfigGenerationRepository;
+import org.cartscheduler.repository.ConfigPairAssignmentScoreRepository;
 import org.cartscheduler.repository.ConfigPairRuleRepository;
 import org.cartscheduler.repository.ConfigParticipantRuleRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +40,10 @@ class ScheduleGenerationConfigurationLoaderTest {
     private ConfigPairRuleRepository pairRuleRepository;
 
     @Mock
-    private ConfigCandidateAvailabilityScoreRepository candidateAvailabilityScoreRepository;
+    private ConfigCandidateAssignmentScoreRepository candidateAssignmentScoreRepository;
+
+    @Mock
+    private ConfigPairAssignmentScoreRepository pairAssignmentScoreRepository;
 
     private ScheduleGenerationConfigurationLoader loader;
 
@@ -47,7 +53,8 @@ class ScheduleGenerationConfigurationLoaderTest {
                 generationRepository,
                 participantRuleRepository,
                 pairRuleRepository,
-                candidateAvailabilityScoreRepository
+                candidateAssignmentScoreRepository,
+                pairAssignmentScoreRepository
         );
     }
 
@@ -56,7 +63,6 @@ class ScheduleGenerationConfigurationLoaderTest {
         Participant first = participant(1L);
         Participant second = participant(2L);
         ConfigGeneration generation = generationConfiguration();
-        generation.setUniquePairPoints(4);
 
         ConfigParticipantRule participantRule = new ConfigParticipantRule();
         participantRule.setParticipant(first);
@@ -72,15 +78,20 @@ class ScheduleGenerationConfigurationLoaderTest {
         pairRule.setCompatibilityMode(ConfigPairCompatibilityMode.REQUIRED);
         pairRule.setScorePoints(8);
 
-        ConfigCandidateAvailabilityScore availabilityScore = new ConfigCandidateAvailabilityScore();
-        availabilityScore.setAppearanceCountFrom(3);
-        availabilityScore.setAppearanceCountTo(5);
-        availabilityScore.setPoints(7);
+        ConfigCandidateAssignmentScore candidateAssignmentScore = new ConfigCandidateAssignmentScore();
+        candidateAssignmentScore.setAssignmentCountFrom(3);
+        candidateAssignmentScore.setAssignmentCountTo(5);
+        candidateAssignmentScore.setPoints(7);
+        ConfigPairAssignmentScore pairAssignmentScore = new ConfigPairAssignmentScore();
+        pairAssignmentScore.setAssignmentCountFrom(1);
+        pairAssignmentScore.setAssignmentCountTo(2);
+        pairAssignmentScore.setPoints(5);
 
         given(generationRepository.findById(ConfigGeneration.SINGLETON_ID)).willReturn(Optional.of(generation));
         given(participantRuleRepository.findAll()).willReturn(List.of(participantRule));
         given(pairRuleRepository.findAll()).willReturn(List.of(pairRule));
-        given(candidateAvailabilityScoreRepository.findAll()).willReturn(List.of(availabilityScore));
+        given(candidateAssignmentScoreRepository.findAll()).willReturn(List.of(candidateAssignmentScore));
+        given(pairAssignmentScoreRepository.findAll()).willReturn(List.of(pairAssignmentScore));
 
         ScheduleGenerationConfiguration configuration = loader.load();
 
@@ -91,9 +102,10 @@ class ScheduleGenerationConfigurationLoaderTest {
         assertThat(configuration.globalPairRules().accepts(1L, 2L)).isTrue();
         assertThat(configuration.globalPairRules().accepts(1L, 3L)).isFalse();
         assertThat(configuration.pairScorePoints()).containsEntry(new CandidatePair(1L, 2L), 8);
-        assertThat(configuration.candidateUniquenessScoreRules())
-                .containsExactly(new CandidateUniquenessScoreRule(3, 5, 7));
-        assertThat(configuration.pairDiversityPoints()).isEqualTo(4);
+        assertThat(configuration.candidateAssignmentScoreRules())
+                .containsExactly(new OccurrenceScoreRule(3, 5, 7));
+        assertThat(configuration.pairAssignmentScoreRules())
+                .containsExactly(new OccurrenceScoreRule(1, 2, 5));
     }
 
     @Test

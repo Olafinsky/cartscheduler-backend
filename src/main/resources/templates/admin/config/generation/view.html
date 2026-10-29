@@ -13,7 +13,6 @@
         <tr><th scope="row">Punkty za pusty wiersz</th><td th:text="${configuration.emptyRowPoints}"></td></tr>
         <tr><th scope="row">Punkty za pełny wiersz obok niepełnego</th><td th:text="${configuration.fullRowAdjacentToIncompletePoints}"></td></tr>
         <tr><th scope="row">Punkty za pełny wiersz bez niepełnego sąsiada</th><td th:text="${configuration.fullRowNotAdjacentToIncompletePoints}"></td></tr>
-        <tr><th scope="row">Punkty za różnorodność par</th><td th:text="${configuration.uniquePairPoints}"></td></tr>
     </tbody></table></div></section>
 </main>
 <th:block th:replace="~{fragments/layout :: scripts}"></th:block>

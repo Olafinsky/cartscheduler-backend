@@ -175,10 +175,10 @@ class ScheduleGenerationInputFactory {
                 breakRulesBySubSheet(effectiveBreakRules),
                 rowPairRules(proposalPairRequirements),
                 configuration.globalPairRules(),
-                candidateUniquenessPoints(qualifiedRowsBySubSheet, configuration.candidateUniquenessScoreRules()),
+                configuration.candidateAssignmentScoreRules(),
                 configuration.participantPrivilegePoints(),
                 configuration.pairScorePoints(),
-                configuration.pairDiversityPoints()
+                configuration.pairAssignmentScoreRules()
         );
     }
 
@@ -427,29 +427,6 @@ class ScheduleGenerationInputFactory {
         proposalPairRequirements.forEach((dayIndex, pairsByRow) -> pairsByRow.forEach((row, requiredPairs) -> result
                 .computeIfAbsent(dayIndex, ignored -> new HashMap<>())
                 .put(row, new PairRules(requiredPairs, Set.of()))));
-        return result;
-    }
-
-    private Map<Long, Integer> candidateUniquenessPoints(
-            Map<Integer, Map<Long, Set<Integer>>> qualifiedRowsBySubSheet,
-            List<CandidateUniquenessScoreRule> configuration
-    ) {
-        Map<Long, Integer> availabilityCountByCandidate = new HashMap<>();
-        qualifiedRowsBySubSheet.values().forEach(candidateRows -> candidateRows.forEach((candidateId, rows) ->
-                availabilityCountByCandidate.merge(candidateId, rows.size(), Integer::sum)
-        ));
-
-        Map<Long, Integer> result = new HashMap<>();
-        availabilityCountByCandidate.forEach((candidateId, appearances) -> {
-            int points = configuration.stream()
-                    .filter(rule -> appearances >= rule.appearanceCountFrom())
-                    .filter(rule -> appearances <= rule.appearanceCountTo())
-                    .mapToInt(CandidateUniquenessScoreRule::points)
-                    .sum();
-            if (points != 0) {
-                result.put(candidateId, points);
-            }
-        });
         return result;
     }
 

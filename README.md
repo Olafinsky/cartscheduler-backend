@@ -67,7 +67,9 @@ Po migracji konfiguracja generatora ma jeden wymagany rekord `config_generation`
 .\gradlew.bat bootRun --args="--spring.main.web-application-type=none --schedule-generation.schedule-id=1"
 ```
 
-Komenda zamyka kontekst aplikacji po zakończeniu generowania. Opcjonalne reguły są zgrupowane w tabelach `config_participant_rules` (długości i przywilej uczestnika), `config_pair_rules` (dopuszczalność i punktacja pary) oraz `config_candidate_availability_scores` (punktacja dostępności). Globalna punktacja wierszy i różnorodności par jest przechowywana w `config_generation`.
+Komenda zamyka kontekst aplikacji po zakończeniu generowania. Opcjonalne reguły są zgrupowane w tabelach `config_participant_rules` (długości i przywilej uczestnika), `config_pair_rules` (dopuszczalność i punktacja konkretnej pary), `config_candidate_assignment_scores` (punktacja kolejnych przydzieleń uczestnika) oraz `config_pair_assignment_scores` (punktacja kolejnych wystąpień pary). Globalna punktacja wierszy jest przechowywana w `config_generation`.
+
+Od migracji `V12` tabela `config_candidate_availability_scores` jest zastępowana przez `config_candidate_assignment_scores`; jej poprzednie wiersze są usuwane, ponieważ miały inną semantykę. Nowa tabela przyznaje punkty za kolejne faktyczne przydzielenia uczestnika w całym grafiku. Tabela `config_pair_assignment_scores` działa analogicznie dla kolejnych użyć konkretnej pary. Zakresy w obu tabelach nie mogą na siebie nachodzić.
 
 ### Limit czasu wyszukiwania
 

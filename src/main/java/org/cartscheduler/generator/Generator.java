@@ -397,6 +397,11 @@ public class Generator {
                 priority += heuristic.priority(context, candidate);
             }
         }
+        for (ScoreFilter filter : scoreFilters) {
+            if (filter instanceof CandidateSelectionHeuristic heuristic) {
+                priority += heuristic.priority(context, candidate);
+            }
+        }
         return priority;
     }
 

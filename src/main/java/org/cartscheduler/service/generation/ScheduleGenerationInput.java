@@ -7,6 +7,7 @@ import org.cartscheduler.entity.Participant;
 import org.cartscheduler.generator.BreakRule;
 import org.cartscheduler.generator.Candidate;
 import org.cartscheduler.generator.CandidatePair;
+import org.cartscheduler.generator.OccurrenceScoreRule;
 import org.cartscheduler.generator.PairRules;
 import org.cartscheduler.generator.Sheet;
 
@@ -21,9 +22,9 @@ record ScheduleGenerationInput(
         Map<Integer, Map<Long, BreakRule>> breakRulesBySubSheet,
         Map<Integer, Map<Integer, PairRules>> rowPairRulesBySubSheet,
         PairRules globalPairRules,
-        Map<Long, Integer> candidateUniquenessPoints,
+        List<OccurrenceScoreRule> candidateAssignmentScoreRules,
         Map<Long, Integer> participantPrivilegePoints,
         Map<CandidatePair, Integer> pairScorePoints,
-        Integer pairDiversityPoints
+        List<OccurrenceScoreRule> pairAssignmentScoreRules
 ) {
 }

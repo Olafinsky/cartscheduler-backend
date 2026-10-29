@@ -29,7 +29,6 @@ public class AdminGenerationConfigService {
         configuration.setEmptyRowPoints(form.getEmptyRowPoints());
         configuration.setFullRowAdjacentToIncompletePoints(form.getFullRowAdjacentToIncompletePoints());
         configuration.setFullRowNotAdjacentToIncompletePoints(form.getFullRowNotAdjacentToIncompletePoints());
-        configuration.setUniquePairPoints(form.getUniquePairPoints());
         return generationRepository.save(configuration);
     }
 }

@@ -1,6 +1,7 @@
 package org.cartscheduler.controller.web;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -8,8 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalDate;
 import java.util.List;
-import org.cartscheduler.entity.ConfigCandidateAvailabilityScore;
+import org.cartscheduler.entity.ConfigCandidateAssignmentScore;
 import org.cartscheduler.entity.ConfigGeneration;
+import org.cartscheduler.entity.ConfigPairAssignmentScore;
 import org.cartscheduler.entity.ConfigPairCompatibilityMode;
 import org.cartscheduler.entity.ConfigPairRule;
 import org.cartscheduler.entity.ConfigParticipantRule;
@@ -17,8 +19,9 @@ import org.cartscheduler.entity.ConfigScheduleDay;
 import org.cartscheduler.entity.ConfigScheduleRestrictedDate;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.request_filter.JwtAuthFilter;
-import org.cartscheduler.service.AdminCandidateAvailabilityScoreConfigService;
+import org.cartscheduler.service.AdminCandidateAssignmentScoreConfigService;
 import org.cartscheduler.service.AdminGenerationConfigService;
+import org.cartscheduler.service.AdminPairAssignmentScoreConfigService;
 import org.cartscheduler.service.AdminPairRuleConfigService;
 import org.cartscheduler.service.AdminParticipantRuleConfigService;
 import org.cartscheduler.service.AdminParticipantService;
@@ -38,7 +41,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
         AdminGenerationConfigController.class,
         AdminParticipantRuleConfigController.class,
         AdminPairRuleConfigController.class,
-        AdminCandidateAvailabilityScoreConfigController.class,
+        AdminCandidateAssignmentScoreConfigController.class,
+        AdminPairAssignmentScoreConfigController.class,
         AdminScheduleDayConfigController.class,
         AdminRestrictedDateController.class
 })
@@ -55,7 +59,9 @@ class AdminConfigurationControllerTest {
     @MockitoBean
     private AdminPairRuleConfigService pairRuleConfigService;
     @MockitoBean
-    private AdminCandidateAvailabilityScoreConfigService candidateAvailabilityScoreConfigService;
+    private AdminCandidateAssignmentScoreConfigService candidateAssignmentScoreConfigService;
+    @MockitoBean
+    private AdminPairAssignmentScoreConfigService pairAssignmentScoreConfigService;
     @MockitoBean
     private AdminScheduleDayConfigService scheduleDayConfigService;
     @MockitoBean
@@ -68,7 +74,8 @@ class AdminConfigurationControllerTest {
     private ConfigGeneration generation;
     private ConfigParticipantRule participantRule;
     private ConfigPairRule pairRule;
-    private ConfigCandidateAvailabilityScore availabilityScore;
+    private ConfigCandidateAssignmentScore candidateAssignmentScore;
+    private ConfigPairAssignmentScore pairAssignmentScore;
     private ConfigScheduleDay scheduleDay;
     private ConfigScheduleRestrictedDate restrictedDate;
 
@@ -80,7 +87,6 @@ class AdminConfigurationControllerTest {
 
         generation = new ConfigGeneration();
         generation.setId((short) 1);
-        generation.setUniquePairPoints(0);
         given(generationConfigService.findAll()).willReturn(List.of(generation));
         given(generationConfigService.getRequired((short) 1)).willReturn(generation);
 
@@ -99,13 +105,21 @@ class AdminConfigurationControllerTest {
         given(pairRuleConfigService.findAll()).willReturn(List.of(pairRule));
         given(pairRuleConfigService.getRequired(5L)).willReturn(pairRule);
 
-        availabilityScore = new ConfigCandidateAvailabilityScore();
-        availabilityScore.setId(6L);
-        availabilityScore.setAppearanceCountFrom(0);
-        availabilityScore.setAppearanceCountTo(2);
-        availabilityScore.setPoints(0);
-        given(candidateAvailabilityScoreConfigService.findAll()).willReturn(List.of(availabilityScore));
-        given(candidateAvailabilityScoreConfigService.getRequired(6L)).willReturn(availabilityScore);
+        candidateAssignmentScore = new ConfigCandidateAssignmentScore();
+        candidateAssignmentScore.setId(6L);
+        candidateAssignmentScore.setAssignmentCountFrom(1);
+        candidateAssignmentScore.setAssignmentCountTo(2);
+        candidateAssignmentScore.setPoints(10);
+        given(candidateAssignmentScoreConfigService.findAll()).willReturn(List.of(candidateAssignmentScore));
+        given(candidateAssignmentScoreConfigService.getRequired(6L)).willReturn(candidateAssignmentScore);
+
+        pairAssignmentScore = new ConfigPairAssignmentScore();
+        pairAssignmentScore.setId(9L);
+        pairAssignmentScore.setAssignmentCountFrom(1);
+        pairAssignmentScore.setAssignmentCountTo(2);
+        pairAssignmentScore.setPoints(5);
+        given(pairAssignmentScoreConfigService.findAll()).willReturn(List.of(pairAssignmentScore));
+        given(pairAssignmentScoreConfigService.getRequired(9L)).willReturn(pairAssignmentScore);
 
         scheduleDay = new ConfigScheduleDay();
         scheduleDay.setId(7L);
@@ -125,67 +139,83 @@ class AdminConfigurationControllerTest {
 
     @Test
     void rendersAllConfigurationListsAndForms() throws Exception {
-        mockMvc.perform(getWithCsrf("/admin/config/generation"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Konfiguracja generowania")))
-                .andExpect(content().string(containsString("Różnorodność par")));
-        mockMvc.perform(getWithCsrf("/admin/config/generation/1/edit"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Edycja konfiguracji generowania")));
-
-        mockMvc.perform(getWithCsrf("/admin/config/participant-rules"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Reguły uczestników")));
-        mockMvc.perform(getWithCsrf("/admin/config/participant-rules/new"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Nowa reguła uczestnika")));
-
-        mockMvc.perform(getWithCsrf("/admin/config/pair-rules"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Reguły par")));
-        mockMvc.perform(getWithCsrf("/admin/config/pair-rules/new"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Nowa reguła pary")));
-
-        mockMvc.perform(getWithCsrf("/admin/config/candidate-availability-scores"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Punktacja dostępności")));
-        mockMvc.perform(getWithCsrf("/admin/config/candidate-availability-scores/new"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Nowa punktacja dostępności")));
-
-        mockMvc.perform(getWithCsrf("/admin/config/schedule-days"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Dni grafiku")));
-        mockMvc.perform(getWithCsrf("/admin/config/schedule-days/new"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Nowy dzień grafiku")));
-
-        mockMvc.perform(getWithCsrf("/admin/config/restricted-dates"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Daty zastrzeżone")));
+        assertOk("/admin/config/generation");
+        assertOk("/admin/config/generation/1/edit");
+        assertOk("/admin/config/participant-rules");
+        assertOk("/admin/config/participant-rules/new");
+        assertOk("/admin/config/pair-rules");
+        assertOk("/admin/config/pair-rules/new");
+        assertOk("/admin/config/candidate-assignment-scores");
+        assertOk("/admin/config/candidate-assignment-scores/new");
+        assertOk("/admin/config/pair-assignment-scores");
+        assertOk("/admin/config/pair-assignment-scores/new");
+        assertOk("/admin/config/schedule-days");
+        assertOk("/admin/config/schedule-days/new");
+        assertOk("/admin/config/restricted-dates");
     }
 
     @Test
     void rendersAllConfigurationDetailViews() throws Exception {
         mockMvc.perform(getWithCsrf("/admin/config/generation/1"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Punkty za pusty wiersz")));
+                .andExpect(content().string(containsString("Punkty")));
         mockMvc.perform(getWithCsrf("/admin/config/participant-rules/4"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Anna Kowalska")));
         mockMvc.perform(getWithCsrf("/admin/config/pair-rules/5"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Dowolna")));
-        mockMvc.perform(getWithCsrf("/admin/config/candidate-availability-scores/6"))
+        mockMvc.perform(getWithCsrf("/admin/config/candidate-assignment-scores/6"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Od liczby wystąpień")));
+                .andExpect(content().string(containsString("10")));
+        mockMvc.perform(getWithCsrf("/admin/config/pair-assignment-scores/9"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("5")));
         mockMvc.perform(getWithCsrf("/admin/config/schedule-days/7"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Poniedziałek")));
+                .andExpect(content().string(containsString("8")));
         mockMvc.perform(getWithCsrf("/admin/config/restricted-dates/8"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("25.12.2026")));
+    }
+
+    @Test
+    void usesTheNewAssignmentAndPairOccurrenceLabelsInEveryScoreView() throws Exception {
+        assertContains("/admin/config/candidate-assignment-scores", "Ilość przydziałów OD");
+        assertContains("/admin/config/candidate-assignment-scores", "Ilość przydziałów DO");
+        assertContains("/admin/config/candidate-assignment-scores/new", "Ilość przydziałów OD");
+        assertContains("/admin/config/candidate-assignment-scores/new", "Ilość przydziałów DO");
+        assertContains("/admin/config/candidate-assignment-scores/6", "Ilość przydziałów DO");
+
+        assertContains("/admin/config/pair-assignment-scores", "Konfiguracja premii za częstotliwość występowania par.");
+        assertContains("/admin/config/pair-assignment-scores", "Ilość wystąpień pary DO");
+        assertContains("/admin/config/pair-assignment-scores/new", "Ilość wystąpień pary OD");
+        assertContains("/admin/config/pair-assignment-scores/new", "Punkty za każde wystąpienie pary");
+        assertContains("/admin/config/pair-assignment-scores/9", "Ilość wystąpień pary DO");
+        assertContains("/admin/config/pair-assignment-scores/9", "Punkty za każde wystąpienie pary");
+    }
+
+    @Test
+    void doesNotExposeTheRemovedPairDiversityConfiguration() throws Exception {
+        assertDoesNotContain("/admin/config/generation", "Różnorodność par");
+        assertDoesNotContain("/admin/config/generation/1/edit", "Różnorodność par");
+        assertDoesNotContain("/admin/config/generation/1", "Różnorodność par");
+    }
+
+    private void assertOk(String url) throws Exception {
+        mockMvc.perform(getWithCsrf(url)).andExpect(status().isOk());
+    }
+
+    private void assertContains(String url, String expectedContent) throws Exception {
+        mockMvc.perform(getWithCsrf(url))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(expectedContent)));
+    }
+
+    private void assertDoesNotContain(String url, String unexpectedContent) throws Exception {
+        mockMvc.perform(getWithCsrf(url))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString(unexpectedContent))));
     }
 
     private MockHttpServletRequestBuilder getWithCsrf(String url) {

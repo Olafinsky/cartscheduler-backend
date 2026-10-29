@@ -38,7 +38,6 @@ public class AdminGenerationConfigController {
         form.setEmptyRowPoints(configuration.getEmptyRowPoints());
         form.setFullRowAdjacentToIncompletePoints(configuration.getFullRowAdjacentToIncompletePoints());
         form.setFullRowNotAdjacentToIncompletePoints(configuration.getFullRowNotAdjacentToIncompletePoints());
-        form.setUniquePairPoints(configuration.getUniquePairPoints() == null ? 0 : configuration.getUniquePairPoints());
         populateFormModel(model, form, id);
         return "admin/config/generation/form";
     }

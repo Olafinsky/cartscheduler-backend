@@ -28,6 +28,4 @@ public class ConfigGeneration {
     @Column(name = "full_row_not_adjacent_to_incomplete_points", nullable = false)
     private int fullRowNotAdjacentToIncompletePoints;
 
-    @Column(name = "unique_pair_points", nullable = false)
-    private Integer uniquePairPoints = 0;
 }

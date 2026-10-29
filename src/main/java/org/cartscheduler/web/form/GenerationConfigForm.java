@@ -17,6 +17,4 @@ public class GenerationConfigForm {
     @NotNull(message = "Podaj liczbę punktów za pełny wiersz.")
     private Integer fullRowNotAdjacentToIncompletePoints = 0;
 
-    @NotNull(message = "Podaj liczbę punktów za różnorodność par.")
-    private Integer uniquePairPoints = 0;
 }

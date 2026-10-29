@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.cartscheduler.entity.BreakMode;
+import org.cartscheduler.entity.ConfigCandidateAssignmentScore;
 import org.cartscheduler.entity.ConfigGeneration;
 import org.cartscheduler.entity.ConfigParticipantRule;
 import org.cartscheduler.entity.EnforcedParticipant;
@@ -11,8 +12,9 @@ import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.Proposal;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
-import org.cartscheduler.repository.ConfigCandidateAvailabilityScoreRepository;
+import org.cartscheduler.repository.ConfigCandidateAssignmentScoreRepository;
 import org.cartscheduler.repository.ConfigGenerationRepository;
+import org.cartscheduler.repository.ConfigPairAssignmentScoreRepository;
 import org.cartscheduler.repository.ConfigPairRuleRepository;
 import org.cartscheduler.repository.ConfigParticipantRuleRepository;
 import org.cartscheduler.repository.EnforcedParticipantRepository;
@@ -58,7 +60,10 @@ class ScheduleGenerationServiceTest {
     private ConfigPairRuleRepository pairRuleRepository;
 
     @Mock
-    private ConfigCandidateAvailabilityScoreRepository candidateAvailabilityScoreRepository;
+    private ConfigCandidateAssignmentScoreRepository candidateAssignmentScoreRepository;
+
+    @Mock
+    private ConfigPairAssignmentScoreRepository pairAssignmentScoreRepository;
 
     private ScheduleGenerationService scheduleGenerationService;
 
@@ -68,7 +73,8 @@ class ScheduleGenerationServiceTest {
                 generationRepository,
                 participantRuleRepository,
                 pairRuleRepository,
-                candidateAvailabilityScoreRepository
+                candidateAssignmentScoreRepository,
+                pairAssignmentScoreRepository
         );
         scheduleGenerationService = new ScheduleGenerationService(
                 scheduleDayRepository,
@@ -157,28 +163,41 @@ class ScheduleGenerationServiceTest {
     }
 
     @Test
-    void awardsPairDiversityOnlyOnceAcrossAllScheduleDays() {
+    void prefersParticipantsWithFewerGeneratedAssignmentsAcrossAllScheduleDays() {
         ScheduleDay monday = day(100L, "Monday", (short) 8);
         ScheduleDay tuesday = day(101L, "Tuesday", (short) 8);
         tuesday.setDayOfWeek((short) 2);
-        Participant first = participant(1L);
-        Participant second = participant(2L);
-        stubRequiredConfiguration(5);
+        Participant firstMondayParticipant = participant(1L);
+        Participant secondMondayParticipant = participant(2L);
+        Participant firstTuesdayParticipant = participant(3L);
+        Participant secondTuesdayParticipant = participant(4L);
+        ConfigCandidateAssignmentScore firstAssignment = new ConfigCandidateAssignmentScore();
+        firstAssignment.setAssignmentCountFrom(1);
+        firstAssignment.setAssignmentCountTo(1);
+        firstAssignment.setPoints(10);
+        ConfigCandidateAssignmentScore laterAssignments = new ConfigCandidateAssignmentScore();
+        laterAssignments.setAssignmentCountFrom(2);
+        laterAssignments.setAssignmentCountTo(100);
+        laterAssignments.setPoints(0);
+        stubRequiredConfiguration();
         stubOptionalEmptyConfigurations();
+        given(candidateAssignmentScoreRepository.findAll()).willReturn(List.of(firstAssignment, laterAssignments));
         given(scheduleDayRepository.findForSchedule(10L)).willReturn(List.of(monday, tuesday));
         given(proposalRepository.findForSchedule(10L)).willReturn(List.of(
-                proposal(first, monday, (short) 8, (short) 8),
-                proposal(second, monday, (short) 8, (short) 8),
-                proposal(first, tuesday, (short) 8, (short) 8),
-                proposal(second, tuesday, (short) 8, (short) 8)
+                proposal(firstMondayParticipant, monday, (short) 8, (short) 8),
+                proposal(secondMondayParticipant, monday, (short) 8, (short) 8),
+                proposal(firstMondayParticipant, tuesday, (short) 8, (short) 8),
+                proposal(secondMondayParticipant, tuesday, (short) 8, (short) 8),
+                proposal(firstTuesdayParticipant, tuesday, (short) 8, (short) 8),
+                proposal(secondTuesdayParticipant, tuesday, (short) 8, (short) 8)
         ));
         given(enforcedParticipantRepository.findByDayNameIn(any())).willReturn(List.of());
 
-        ScheduleGenerationPreview preview = scheduleGenerationService.preview(10L);
+        scheduleGenerationService.generate(10L);
 
-        assertThat(preview.assignedParticipantCells()).isEqualTo(4);
-        assertThat(preview.score()).isEqualTo(25);
-        verifyNoInteractions(scheduleEntryRepository);
+        ScheduleEntry tuesdayEntry = tuesday.getScheduleEntries().getFirst();
+        assertThat(List.of(tuesdayEntry.getParticipant1().getId(), tuesdayEntry.getParticipant2().getId()))
+                .containsExactlyInAnyOrder(firstTuesdayParticipant.getId(), secondTuesdayParticipant.getId());
     }
 
     @Test
@@ -533,23 +552,19 @@ class ScheduleGenerationServiceTest {
     }
 
     private void stubRequiredConfiguration() {
-        stubRequiredConfiguration(null);
-    }
-
-    private void stubRequiredConfiguration(Integer uniquePairPoints) {
         ConfigGeneration configuration = new ConfigGeneration();
         configuration.setId(ConfigGeneration.SINGLETON_ID);
         configuration.setEmptyRowPoints(0);
         configuration.setFullRowAdjacentToIncompletePoints(10);
         configuration.setFullRowNotAdjacentToIncompletePoints(10);
-        configuration.setUniquePairPoints(uniquePairPoints);
         given(generationRepository.findById(ConfigGeneration.SINGLETON_ID)).willReturn(Optional.of(configuration));
     }
 
     private void stubOptionalEmptyConfigurations() {
         given(pairRuleRepository.findAll()).willReturn(List.of());
         given(participantRuleRepository.findAll()).willReturn(List.of());
-        given(candidateAvailabilityScoreRepository.findAll()).willReturn(List.of());
+        given(candidateAssignmentScoreRepository.findAll()).willReturn(List.of());
+        given(pairAssignmentScoreRepository.findAll()).willReturn(List.of());
     }
 
     private ScheduleDay day(long id, String name, short... hours) {

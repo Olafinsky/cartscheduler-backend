@@ -130,6 +130,14 @@ class RepositoryIntegrationIT {
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '9' AND success = true",
                 Integer.class
         );
+        Integer assignmentDistributionScoresMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '12' AND success = true",
+                Integer.class
+        );
+        Integer removeUniquePairDiversityScoreMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '13' AND success = true",
+                Integer.class
+        );
         Integer participantsTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'participants'",
@@ -195,12 +203,28 @@ class RepositoryIntegrationIT {
                         "WHERE table_schema = DATABASE() AND table_name = 'config_generation'",
                 Integer.class
         );
+        Integer obsoleteUniquePairPointsColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_generation' " +
+                        "AND column_name = 'unique_pair_points'",
+                Integer.class
+        );
         Integer participantRulesTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'config_participant_rules'",
                 Integer.class
         );
-        Integer candidateAvailabilityScoresTableCount = jdbcTemplate.queryForObject(
+        Integer candidateAssignmentScoresTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_candidate_assignment_scores'",
+                Integer.class
+        );
+        Integer pairAssignmentScoresTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_pair_assignment_scores'",
+                Integer.class
+        );
+        Integer obsoleteCandidateAvailabilityScoresTableCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables " +
                         "WHERE table_schema = DATABASE() AND table_name = 'config_candidate_availability_scores'",
                 Integer.class
@@ -233,6 +257,8 @@ class RepositoryIntegrationIT {
         assertThat(participantAutomationMigrationCount).isEqualTo(1);
         assertThat(scheduleDateMigrationCount).isEqualTo(1);
         assertThat(proposalStatusIndexMigrationCount).isEqualTo(1);
+        assertThat(assignmentDistributionScoresMigrationCount).isEqualTo(1);
+        assertThat(removeUniquePairDiversityScoreMigrationCount).isEqualTo(1);
         assertThat(participantsTableCount).isEqualTo(1);
         assertThat(allowPairSelectionColumnCount).isEqualTo(1);
         assertThat(breakModeColumnCount).isEqualTo(1);
@@ -244,8 +270,11 @@ class RepositoryIntegrationIT {
         assertThat(scheduleDateColumnCount).isEqualTo(1);
         assertThat(proposalStatusIndexCount).isEqualTo(2);
         assertThat(generationConfigurationTableCount).isEqualTo(1);
+        assertThat(obsoleteUniquePairPointsColumnCount).isZero();
         assertThat(participantRulesTableCount).isEqualTo(1);
-        assertThat(candidateAvailabilityScoresTableCount).isEqualTo(1);
+        assertThat(candidateAssignmentScoresTableCount).isEqualTo(1);
+        assertThat(pairAssignmentScoresTableCount).isEqualTo(1);
+        assertThat(obsoleteCandidateAvailabilityScoresTableCount).isZero();
         assertThat(scheduleDaysConfigurationTableCount).isEqualTo(1);
         assertThat(restrictedDatesConfigurationTableCount).isEqualTo(1);
         assertThat(obsoleteRowScoreTableCount).isZero();

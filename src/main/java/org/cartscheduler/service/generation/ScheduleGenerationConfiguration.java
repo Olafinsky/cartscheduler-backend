@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.cartscheduler.generator.CandidatePair;
 import org.cartscheduler.generator.IntRange;
+import org.cartscheduler.generator.OccurrenceScoreRule;
 import org.cartscheduler.generator.PairRules;
 
 /**
@@ -18,9 +19,9 @@ record ScheduleGenerationConfiguration(
         Map<Long, IntRange> configuredBreakRanges,
         PairRules globalPairRules,
         Map<CandidatePair, Integer> pairScorePoints,
-        List<CandidateUniquenessScoreRule> candidateUniquenessScoreRules,
+        List<OccurrenceScoreRule> candidateAssignmentScoreRules,
         Map<Long, Integer> participantPrivilegePoints,
-        Integer pairDiversityPoints
+        List<OccurrenceScoreRule> pairAssignmentScoreRules
 ) {
     ScheduleGenerationConfiguration {
         Objects.requireNonNull(rowScore, "rowScore must not be null");
@@ -28,15 +29,16 @@ record ScheduleGenerationConfiguration(
         configuredServiceRanges = Map.copyOf(configuredServiceRanges);
         configuredBreakRanges = Map.copyOf(configuredBreakRanges);
         pairScorePoints = Map.copyOf(pairScorePoints);
-        candidateUniquenessScoreRules = List.copyOf(candidateUniquenessScoreRules);
+        candidateAssignmentScoreRules = List.copyOf(candidateAssignmentScoreRules);
         participantPrivilegePoints = Map.copyOf(participantPrivilegePoints);
+        pairAssignmentScoreRules = List.copyOf(pairAssignmentScoreRules);
     }
 
     boolean hasOnlyRowScore() {
         return pairScorePoints.isEmpty()
-                && candidateUniquenessScoreRules.isEmpty()
+                && !OccurrenceScoreRule.hasNonZeroPoints(candidateAssignmentScoreRules)
                 && participantPrivilegePoints.isEmpty()
-                && pairDiversityPoints == null;
+                && !OccurrenceScoreRule.hasNonZeroPoints(pairAssignmentScoreRules);
     }
 }
 
@@ -46,8 +48,4 @@ record RowFullOrEmptyScore(
         int fullRowAdjacentToIncompletePoints,
         int fullRowNotAdjacentToIncompletePoints
 ) {
-}
-
-/** Points awarded per occupied cell when a candidate has a matching availability count. */
-record CandidateUniquenessScoreRule(int appearanceCountFrom, int appearanceCountTo, int points) {
 }

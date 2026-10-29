@@ -18,6 +18,7 @@ import org.cartscheduler.generator.Candidate;
 import org.cartscheduler.generator.GenerationSearchLimitExceededException;
 import org.cartscheduler.generator.Generator;
 import org.cartscheduler.generator.GeneratorSearchDeadline;
+import org.cartscheduler.generator.OccurrenceScoreRule;
 import org.cartscheduler.generator.PostGenerationFilter;
 import org.cartscheduler.generator.ScoreFilter;
 import org.cartscheduler.generator.Sheet;
@@ -31,7 +32,8 @@ import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterMini
 import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterPairRules;
 import org.cartscheduler.generator.postgenerationfilter.PostGenerationFilterRowsAreFullOrEmpty;
 import org.cartscheduler.generator.scorefilter.ScoreFilterCandidatePoints;
-import org.cartscheduler.generator.scorefilter.ScoreFilterPairDiversity;
+import org.cartscheduler.generator.scorefilter.ScoreFilterCandidateAssignmentScores;
+import org.cartscheduler.generator.scorefilter.ScoreFilterPairAssignmentScores;
 import org.cartscheduler.generator.scorefilter.ScoreFilterPairPoints;
 import org.cartscheduler.generator.scorefilter.ScoreFilterRowFullOrEmpty;
 import org.cartscheduler.repository.EnforcedParticipantRepository;
@@ -469,14 +471,14 @@ public class ScheduleGenerationService {
         if (!input.pairScorePoints().isEmpty()) {
             filters.add(new ScoreFilterPairPoints(input.pairScorePoints()));
         }
-        if (!input.candidateUniquenessPoints().isEmpty()) {
-            filters.add(new ScoreFilterCandidatePoints(input.candidateUniquenessPoints()));
+        if (OccurrenceScoreRule.hasNonZeroPoints(input.candidateAssignmentScoreRules())) {
+            filters.add(new ScoreFilterCandidateAssignmentScores(input.candidateAssignmentScoreRules()));
         }
         if (!input.participantPrivilegePoints().isEmpty()) {
             filters.add(new ScoreFilterCandidatePoints(input.participantPrivilegePoints()));
         }
-        if (input.pairDiversityPoints() != null) {
-            filters.add(new ScoreFilterPairDiversity(input.pairDiversityPoints()));
+        if (OccurrenceScoreRule.hasNonZeroPoints(input.pairAssignmentScoreRules())) {
+            filters.add(new ScoreFilterPairAssignmentScores(input.pairAssignmentScoreRules()));
         }
         return filters;
     }
