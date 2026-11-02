@@ -414,16 +414,34 @@ a:hover {
 .summary-table .participant-column {
     position: sticky;
     left: 0;
-    z-index: 2;
+    z-index: 3;
     min-width: 14rem;
     max-width: 18rem;
     background: var(--surface);
-    box-shadow: .3rem 0 .7rem rgb(38 48 67 / 6%);
+    border-right: 0;
+    box-shadow: .3rem 0 .7rem rgb(38 48 67 / 8%);
+}
+
+/* Kept inside the sticky cell so scrolling columns cannot cover the separator. */
+.summary-table .participant-column::after {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 3px;
+    content: "";
+    pointer-events: none;
+    background: #b8c2d0;
 }
 
 .summary-table thead .participant-column {
-    z-index: 4;
+    z-index: 5;
     background: var(--accent-soft);
+}
+
+.summary-table thead .participant-column::after {
+    background: var(--accent-ink);
 }
 
 .summary-table.table-striped,
