@@ -1,8 +1,10 @@
 package org.cartscheduler.controller.rest;
 
 import org.cartscheduler.dto.rest.request.CreateProposalRequest;
+import org.cartscheduler.dto.rest.response.ProposalPrefillDto;
 import org.cartscheduler.dto.rest.response.ProposalDto;
 import org.cartscheduler.impl.RestUserDetails;
+import org.cartscheduler.service.ProposalPrefillService;
 import org.cartscheduler.service.ProposalService;
 import org.cartscheduler.service.ScheduleService;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,9 @@ class ProposalsControllerTest {
 
     @Mock
     private ProposalService proposalService;
+
+    @Mock
+    private ProposalPrefillService proposalPrefillService;
 
     @Mock
     private ScheduleService scheduleService;
@@ -89,6 +94,34 @@ class ProposalsControllerTest {
                 .satisfies(exception -> assertThat(((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
         verifyNoInteractions(proposalService);
+    }
+
+    @Test
+    void shouldDelegateProposalPrefillWhenPrincipalHasAccessToTokenSchedule() {
+        RestUserDetails principal = user(1L);
+        principal.setScheduleId(5L);
+        ProposalPrefillDto expected = ProposalPrefillDto.unavailable();
+        given(scheduleService.checkScheduleAccess(principal, 5L)).willReturn(true);
+        given(proposalPrefillService.preparePrefill(2L, 10L, 1L, 5L)).willReturn(expected);
+
+        ProposalPrefillDto result = proposalsController.prefill(principal, 10L, 2L);
+
+        assertThat(result).isSameAs(expected);
+        verify(proposalPrefillService).preparePrefill(2L, 10L, 1L, 5L);
+    }
+
+    @Test
+    void shouldForbidProposalPrefillWhenPrincipalHasNoScheduleAccess() {
+        RestUserDetails principal = user(1L);
+        principal.setScheduleId(5L);
+        given(scheduleService.checkScheduleAccess(principal, 5L)).willReturn(false);
+
+        assertThatThrownBy(() -> proposalsController.prefill(principal, 10L, 2L))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(exception -> assertThat(((ResponseStatusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+
+        verifyNoInteractions(proposalPrefillService);
     }
 
     @Test

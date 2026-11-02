@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${editing} ? 'Edycja punktacji przydziałów uczestników' : 'Nowa punktacja przydziałów uczestników')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="mb-4">
+        <h1 class="page-heading h2 mb-1" th:text="${editing} ? 'Edycja punktacji przydziałów uczestników' : 'Nowa punktacja przydziałów uczestników'"></h1>
+        <p class="text-secondary mb-0">Punkty są naliczane za każde kolejne przydzielenie uczestnika w całym grafiku. Zakresy są domknięte i nie mogą się nakładać.</p>
+    </div>
+    <section class="card content-card"><div class="card-body p-4"><form th:object="${form}" th:action="${editing} ? @{/admin/config/candidate-assignment-scores/{id}/edit(id=${scoreId})} : @{/admin/config/candidate-assignment-scores}" method="post" novalidate autocomplete="off">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+        <div class="row g-3">
+            <div class="col-md-4"><label class="form-label" for="assignmentCountFrom">Ilość przydziałów OD *</label><input id="assignmentCountFrom" type="number" min="1" step="1" class="form-control" th:field="*{assignmentCountFrom}" th:classappend="${#fields.hasErrors('assignmentCountFrom')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{assignmentCountFrom}"></div></div>
+            <div class="col-md-4"><label class="form-label" for="assignmentCountTo">Ilość przydziałów DO *</label><input id="assignmentCountTo" type="number" min="1" step="1" class="form-control" th:field="*{assignmentCountTo}" th:classappend="${#fields.hasErrors('assignmentCountTo')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{assignmentCountTo}"></div></div>
+            <div class="col-md-4"><label class="form-label" for="points">Punkty za każde przydzielenie *</label><input id="points" type="number" step="1" class="form-control" th:field="*{points}" th:classappend="${#fields.hasErrors('points')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{points}"></div></div>
+        </div>
+        <div class="mt-4 d-flex gap-2"><button type="submit" class="btn btn-primary" th:text="${editing} ? 'Zapisz' : 'Dodaj'"></button><a class="btn btn-outline-secondary" th:href="@{/admin/config/candidate-assignment-scores}">Anuluj</a></div>
+    </form></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

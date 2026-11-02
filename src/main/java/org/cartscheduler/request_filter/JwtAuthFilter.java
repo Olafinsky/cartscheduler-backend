@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import io.jsonwebtoken.JwtException;
 import org.cartscheduler.impl.RestUserDetails;
 import org.cartscheduler.service.JwtService;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,6 +23,7 @@ import java.io.IOException;
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
     @Autowired
+    @Qualifier("restUserInfoService")
     private UserDetailsService userDetailsService;
     @Autowired
     private JwtService jwtService;

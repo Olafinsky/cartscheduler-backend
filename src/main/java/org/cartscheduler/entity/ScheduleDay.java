@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Entity
@@ -29,6 +30,9 @@ public class ScheduleDay {
     @Column(name = "day_of_week")
     @NotNull
     private short dayOfWeek;
+
+    @Column(name = "schedule_date")
+    private LocalDate scheduleDate;
 
     @Column(name = "name")
     @NotBlank

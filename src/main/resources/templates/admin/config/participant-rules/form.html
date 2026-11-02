@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(${editing} ? 'Edycja reguły uczestnika' : 'Nowa reguła uczestnika')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="mb-4"><h1 class="page-heading h2 mb-1" th:text="${editing} ? 'Edycja reguły uczestnika' : 'Nowa reguła uczestnika'"></h1><p class="text-secondary mb-0">Zakresy są opcjonalne, lecz każdą parę granic należy podać w całości.</p></div>
+    <section class="card content-card"><div class="card-body p-4"><form th:object="${form}" th:action="${editing} ? @{/admin/config/participant-rules/{id}/edit(id=${ruleId})} : @{/admin/config/participant-rules}" method="post" novalidate autocomplete="off">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+        <div class="row g-3">
+            <div class="col-md-6"><label class="form-label" for="participantId">Uczestnik *</label><select id="participantId" class="form-select" th:field="*{participantId}" th:classappend="${#fields.hasErrors('participantId')} ? ' is-invalid' : ''"><option value="">Wybierz uczestnika</option><option th:each="participant : ${participants}" th:value="${participant.id}" th:text="${participant.name + ' (' + participant.email + ')'}"></option></select><div class="invalid-feedback" th:errors="*{participantId}"></div></div>
+            <div class="col-md-6"><label class="form-label" for="privilegePoints">Punkty uprzywilejowania *</label><input id="privilegePoints" type="number" step="1" class="form-control" th:field="*{privilegePoints}" th:classappend="${#fields.hasErrors('privilegePoints')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{privilegePoints}"></div></div>
+            <div class="col-md-6"><label class="form-label" for="serviceLengthMin">Minimalna długość służby</label><input id="serviceLengthMin" type="number" min="0" max="127" class="form-control" th:field="*{serviceLengthMin}" th:classappend="${#fields.hasErrors('serviceLengthMin')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{serviceLengthMin}"></div></div>
+            <div class="col-md-6"><label class="form-label" for="serviceLengthMax">Maksymalna długość służby</label><input id="serviceLengthMax" type="number" min="0" max="127" class="form-control" th:field="*{serviceLengthMax}" th:classappend="${#fields.hasErrors('serviceLengthMax')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{serviceLengthMax}"></div></div>
+            <div class="col-md-6"><label class="form-label" for="breakLengthMin">Minimalna długość przerwy</label><input id="breakLengthMin" type="number" min="0" max="127" class="form-control" th:field="*{breakLengthMin}" th:classappend="${#fields.hasErrors('breakLengthMin')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{breakLengthMin}"></div></div>
+            <div class="col-md-6"><label class="form-label" for="breakLengthMax">Maksymalna długość przerwy</label><input id="breakLengthMax" type="number" min="0" max="127" class="form-control" th:field="*{breakLengthMax}" th:classappend="${#fields.hasErrors('breakLengthMax')} ? ' is-invalid' : ''"><div class="invalid-feedback" th:errors="*{breakLengthMax}"></div></div>
+        </div>
+        <div class="mt-4 d-flex gap-2"><button type="submit" class="btn btn-primary" th:text="${editing} ? 'Zapisz' : 'Dodaj'"></button><a class="btn btn-outline-secondary" th:href="@{/admin/config/participant-rules}">Anuluj</a></div>
+    </form></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

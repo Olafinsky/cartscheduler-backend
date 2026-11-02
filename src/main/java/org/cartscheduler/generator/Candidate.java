@@ -2,13 +2,13 @@ package org.cartscheduler.generator;
 
 public class Candidate {
 
-    private final int id;
+    private final long id;
 
-    public Candidate(int id) {
+    public Candidate(long id) {
         this.id = id;
     }
 
-    public int getId() {
+    public long getId() {
         return this.id;
     }
 

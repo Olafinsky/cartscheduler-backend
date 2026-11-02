@@ -1,6 +1,7 @@
 package org.cartscheduler.service;
 
 import org.cartscheduler.entity.ScheduleDay;
+import org.cartscheduler.repository.ProposalRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -8,6 +9,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,12 +17,16 @@ import static org.cartscheduler.support.TestEntityFactory.scheduleDay;
 import static org.cartscheduler.support.TestEntityFactory.scheduleEntry;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class ScheduleDayServiceTest {
 
     @Mock
     private ScheduleDayRepository scheduleDayRepository;
+
+    @Mock
+    private ProposalRepository proposalRepository;
 
     @InjectMocks
     private ScheduleDayService scheduleDayService;
@@ -46,6 +52,7 @@ class ScheduleDayServiceTest {
                         org.assertj.core.groups.Tuple.tuple(20L, "Tuesday", 8, 16)
                 );
         verify(scheduleDayRepository).findForSchedule(5L);
+        assertThat(result).allSatisfy(dto -> assertThat(dto.getHasProposals()).isNull());
     }
 
     @Test
@@ -72,5 +79,42 @@ class ScheduleDayServiceTest {
         var result = scheduleDayService.prepareScheduleDayDtoForParticipant(10L, 5L);
 
         assertThat(result).isNull();
+    }
+
+    @Test
+    void shouldMapDatesFromModelAndProposalStatusInOneBatch() {
+        ScheduleDay firstDay = scheduleDay(10L, "Nazwa prezentacyjna bez daty", List.of(
+                scheduleEntry(1L, "07:00", (short) 7),
+                scheduleEntry(2L, "17:00", (short) 17)
+        ));
+        firstDay.setScheduleDate(LocalDate.of(2026, 11, 2));
+        ScheduleDay secondDay = scheduleDay(20L, "Inna nazwa prezentacyjna", List.of(
+                scheduleEntry(3L, "07:00", (short) 7),
+                scheduleEntry(4L, "17:00", (short) 17)
+        ));
+        secondDay.setScheduleDate(LocalDate.of(2026, 11, 4));
+        given(scheduleDayRepository.findForSchedule(5L)).willReturn(List.of(firstDay, secondDay));
+        given(proposalRepository.findScheduleDayIdsWithProposalsForParticipantAndSchedule(7L, 5L))
+                .willReturn(List.of(10L));
+
+        var result = scheduleDayService.prepareScheduleDayDtoListForScheduleAndParticipant(5L, 7L);
+
+        assertThat(result)
+                .extracting(dto -> dto.getId(), dto -> dto.getDate(), dto -> dto.getHasProposals())
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(10L, LocalDate.of(2026, 11, 2), true),
+                        org.assertj.core.groups.Tuple.tuple(20L, LocalDate.of(2026, 11, 4), false)
+                );
+        verify(proposalRepository).findScheduleDayIdsWithProposalsForParticipantAndSchedule(7L, 5L);
+    }
+
+    @Test
+    void shouldNotQueryProposalStatusesWhenScheduleHasNoDays() {
+        given(scheduleDayRepository.findForSchedule(5L)).willReturn(List.of());
+
+        var result = scheduleDayService.prepareScheduleDayDtoListForScheduleAndParticipant(5L, 7L);
+
+        assertThat(result).isEmpty();
+        verifyNoInteractions(proposalRepository);
     }
 }

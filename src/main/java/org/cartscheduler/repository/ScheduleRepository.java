@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
+    boolean existsByName(String name);
+
     @Query("SELECT s FROM Schedule s JOIN s.accessibleParticipants p WHERE p.id = ?1")
     List<Schedule> findForParticipant(Long id);
 

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Podgląd użytkownika')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div><h1 class="page-heading h2 mb-1">Podgląd użytkownika</h1><p class="text-secondary mb-0" th:text="${user.username}"></p></div>
+        <div class="d-flex gap-2"><a class="btn btn-outline-secondary" th:href="@{/admin/users}">Wróć do listy</a><a class="btn btn-primary" th:href="@{/admin/users/{id}/edit(id=${user.id})}"><i class="bi bi-pencil me-1"></i>Edytuj</a></div>
+    </div>
+    <section class="card content-card"><div class="table-responsive"><table class="table mb-0">
+        <tbody>
+        <tr><th scope="row" class="w-25">ID</th><td th:text="${user.id}"></td></tr>
+        <tr><th scope="row">Nazwa użytkownika</th><td th:text="${user.username}"></td></tr>
+        <tr><th scope="row">Imię i nazwisko</th><td th:text="${user.name}"></td></tr>
+        <tr><th scope="row">E-mail</th><td th:text="${user.email}"></td></tr>
+        <tr><th scope="row">Utworzono</th><td th:text="${#temporals.format(user.createdAt, 'dd.MM.yyyy HH:mm')}"></td></tr>
+        <tr><th scope="row">Ostatnie logowanie</th><td th:text="${user.dateLastLogin == null ? '—' : #temporals.format(user.dateLastLogin, 'dd.MM.yyyy HH:mm')}"></td></tr>
+        </tbody>
+    </table></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

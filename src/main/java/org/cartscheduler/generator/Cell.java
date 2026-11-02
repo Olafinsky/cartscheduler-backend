@@ -2,6 +2,7 @@ package org.cartscheduler.generator;
 
 public class Cell {
     private Candidate candidate = null;
+    private boolean fixed;
 
     private int x;
     private int y;
@@ -15,8 +16,21 @@ public class Cell {
         this.candidate = candidate;
     }
 
+    /**
+     * Marks this cell as an input imposed by the caller. The raw generator keeps
+     * such a value unchanged while it searches values for the remaining cells.
+     */
+    public void setFixedCandidate(Candidate candidate) {
+        this.candidate = candidate;
+        this.fixed = true;
+    }
+
     public Candidate getCandidate() {
         return candidate;
+    }
+
+    public boolean isFixed() {
+        return fixed;
     }
 
     public int getX() {

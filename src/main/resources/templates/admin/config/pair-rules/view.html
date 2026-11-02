@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Podgląd reguły pary')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><div><h1 class="page-heading h2 mb-1">Podgląd reguły pary</h1><p class="text-secondary mb-0">Szczegóły skonfigurowanej pary.</p></div><div class="d-flex gap-2"><a class="btn btn-outline-secondary" th:href="@{/admin/config/pair-rules}">Wróć do listy</a><a class="btn btn-primary" th:href="@{/admin/config/pair-rules/{id}/edit(id=${rule.id})}"><i class="bi bi-pencil me-1"></i>Edytuj</a></div></div>
+    <section class="card content-card"><div class="table-responsive"><table class="table mb-0"><tbody>
+        <tr><th scope="row" class="w-50">ID</th><td th:text="${rule.id}"></td></tr>
+        <tr><th scope="row">Uczestnik 1</th><td th:text="${rule.participant1.name + ' (' + rule.participant1.email + ')'}"></td></tr>
+        <tr><th scope="row">Uczestnik 2</th><td th:text="${rule.participant2.name + ' (' + rule.participant2.email + ')'}"></td></tr>
+        <tr><th scope="row">Tryb zgodności</th><td th:text="${compatibilityModeLabels.get(rule.compatibilityMode)}"></td></tr>
+        <tr><th scope="row">Punkty</th><td th:text="${rule.scorePoints}"></td></tr>
+    </tbody></table></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

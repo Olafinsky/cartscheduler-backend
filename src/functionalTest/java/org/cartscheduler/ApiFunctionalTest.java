@@ -3,6 +3,7 @@ package org.cartscheduler;
 import org.cartscheduler.dto.rest.request.RestAuthRequest;
 import org.cartscheduler.dto.rest.request.CreateProposalRequest;
 import org.cartscheduler.dto.rest.response.ParticipantDto;
+import org.cartscheduler.dto.rest.response.ProposalPrefillDto;
 import org.cartscheduler.dto.rest.response.ProposalDto;
 import org.cartscheduler.dto.rest.response.RestAuthResponse;
 import org.cartscheduler.dto.rest.response.ScheduleDayDto;
@@ -38,6 +39,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -178,6 +180,147 @@ class ApiFunctionalTest {
                 .containsExactly(org.assertj.core.groups.Tuple.tuple(
                         fixture.assignedParticipant().getId(), fixture.assignedParticipant().getName()
                 ));
+    }
+
+    @Test
+    void shouldExposeProposalStatusesForManagedParticipantsAndSelectedParticipantDays() {
+        Fixture fixture = seedFixture();
+        Participant participantWithoutOwnProposal = saveParticipant("Without own proposal", "without-own@example.test");
+        Participant participantSelectedOnlyAsPair = saveParticipant("Pair only", "pair-only@example.test");
+        fixture.schedule().setAccessibleParticipants(List.of(
+                fixture.assignedParticipant(),
+                fixture.directlyScheduledParticipant(),
+                participantWithoutOwnProposal,
+                participantSelectedOnlyAsPair
+        ));
+        scheduleRepository.saveAndFlush(fixture.schedule());
+        fixture.agent().setAssignedParticipants(new ArrayList<>(List.of(
+                fixture.assignedParticipant(),
+                participantWithoutOwnProposal,
+                participantSelectedOnlyAsPair
+        )));
+        participantRepository.saveAndFlush(fixture.agent());
+
+        ScheduleDay secondDay = new ScheduleDay();
+        secondDay.setSchedule(fixture.schedule());
+        secondDay.setDayOfWeek((short) 2);
+        secondDay.setScheduleDate(LocalDate.of(2026, 11, 4));
+        secondDay.setName("Nazwa prezentacyjna bez daty");
+        secondDay = scheduleDayRepository.saveAndFlush(secondDay);
+        saveScheduleEntry(secondDay, "07:00", (short) 7);
+        saveScheduleEntry(secondDay, "17:00", (short) 17);
+
+        Proposal ownProposal = saveProposal(
+                fixture.assignedParticipant(),
+                fixture.agent(),
+                fixture.scheduleDay(),
+                (short) 8,
+                (short) 10
+        );
+        ownProposal.setPairParticipant(participantSelectedOnlyAsPair);
+        proposalRepository.saveAndFlush(ownProposal);
+        saveProposal(
+                fixture.directlyScheduledParticipant(),
+                fixture.agent(),
+                secondDay,
+                (short) 8,
+                (short) 10
+        );
+
+        Schedule anotherSchedule = saveSchedule("Another schedule", participantWithoutOwnProposal);
+        ScheduleDay anotherScheduleDay = new ScheduleDay();
+        anotherScheduleDay.setSchedule(anotherSchedule);
+        anotherScheduleDay.setDayOfWeek((short) 3);
+        anotherScheduleDay.setScheduleDate(LocalDate.of(2026, 12, 2));
+        anotherScheduleDay.setName("Inny grafik");
+        anotherScheduleDay = scheduleDayRepository.saveAndFlush(anotherScheduleDay);
+        saveProposal(
+                participantWithoutOwnProposal,
+                fixture.agent(),
+                anotherScheduleDay,
+                (short) 8,
+                (short) 10
+        );
+
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+        ResponseEntity<ParticipantDto[]> participantsResponse = restTemplate.exchange(
+                "/api/schedules/{scheduleId}/participants/",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                ParticipantDto[].class,
+                fixture.schedule().getId()
+        );
+        ResponseEntity<ScheduleDayDto[]> daysResponse = restTemplate.exchange(
+                "/api/schedules/{scheduleId}/days/?participantId={participantId}",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                ScheduleDayDto[].class,
+                fixture.schedule().getId(),
+                fixture.assignedParticipant().getId()
+        );
+        ResponseEntity<String> daysWithoutParticipantResponse = restTemplate.exchange(
+                "/api/schedules/{scheduleId}/days/",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                String.class,
+                fixture.schedule().getId()
+        );
+        ResponseEntity<String> existingParticipantsResponse = restTemplate.exchange(
+                "/api/participants/",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                String.class
+        );
+        ResponseEntity<String> forbiddenParticipantResponse = restTemplate.exchange(
+                "/api/schedules/{scheduleId}/days/?participantId={participantId}",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                String.class,
+                fixture.schedule().getId(),
+                fixture.directlyScheduledParticipant().getId()
+        );
+
+        assertThat(participantsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(participantsResponse.getBody()).isNotNull();
+        assertThat(participantsResponse.getBody())
+                .extracting(ParticipantDto::getName, ParticipantDto::getHasProposals)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("Assigned", true),
+                        org.assertj.core.groups.Tuple.tuple("Pair only", false),
+                        org.assertj.core.groups.Tuple.tuple("Without own proposal", false)
+                );
+        assertThat(daysResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(daysResponse.getBody()).isNotNull();
+        assertThat(daysResponse.getBody())
+                .extracting(ScheduleDayDto::getId, ScheduleDayDto::getDate, ScheduleDayDto::getHasProposals)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(
+                                fixture.scheduleDay().getId(), LocalDate.of(2026, 11, 2), true
+                        ),
+                        org.assertj.core.groups.Tuple.tuple(
+                                secondDay.getId(), LocalDate.of(2026, 11, 4), false
+                        )
+                );
+        assertThat(daysWithoutParticipantResponse.getBody()).doesNotContain("hasProposals");
+        assertThat(existingParticipantsResponse.getBody()).doesNotContain("hasProposals");
+        assertThat(forbiddenParticipantResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        proposalRepository.delete(ownProposal);
+        proposalRepository.flush();
+        ResponseEntity<ScheduleDayDto[]> daysAfterDeletingLastOwnProposal = restTemplate.exchange(
+                "/api/schedules/{scheduleId}/days/?participantId={participantId}",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                ScheduleDayDto[].class,
+                fixture.schedule().getId(),
+                fixture.assignedParticipant().getId()
+        );
+
+        assertThat(daysAfterDeletingLastOwnProposal.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(daysAfterDeletingLastOwnProposal.getBody())
+                .filteredOn(day -> day.getId() == fixture.scheduleDay().getId())
+                .extracting(ScheduleDayDto::getHasProposals)
+                .containsExactly(false);
     }
 
     @Test
@@ -325,6 +468,100 @@ class ApiFunctionalTest {
     }
 
     @Test
+    void shouldReturnReadOnlyProposalPrefillThroughHttpApi() {
+        Fixture fixture = seedFixture();
+        ScheduleDay sourceDay = new ScheduleDay();
+        sourceDay.setSchedule(fixture.schedule());
+        sourceDay.setDayOfWeek((short) 1);
+        sourceDay.setScheduleDate(LocalDate.of(2026, 10, 26));
+        sourceDay.setName("Previous Monday");
+        sourceDay = scheduleDayRepository.saveAndFlush(sourceDay);
+        saveScheduleEntry(sourceDay, "07:00", (short) 7);
+        saveScheduleEntry(sourceDay, "15:00", (short) 15);
+        Proposal sourceProposal = saveProposal(
+                fixture.assignedParticipant(),
+                fixture.agent(),
+                sourceDay,
+                (short) 7,
+                (short) 15
+        );
+        sourceProposal.setServiceLengthStart((short) 4);
+        sourceProposal.setServiceLengthEnd((short) 6);
+        sourceProposal.setBreakMode(org.cartscheduler.entity.BreakMode.REQUIRE_BREAK);
+        sourceProposal.setBreakLengthStart((short) 1);
+        sourceProposal.setBreakLengthEnd((short) 2);
+        proposalRepository.saveAndFlush(sourceProposal);
+        long proposalCountBeforeRequest = proposalRepository.count();
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+
+        ResponseEntity<ProposalPrefillDto> response = restTemplate.exchange(
+                "/api/proposals/schedule-day/{scheduleDayId}/participant/{participantId}/prefill",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                ProposalPrefillDto.class,
+                fixture.scheduleDay().getId(),
+                fixture.assignedParticipant().getId()
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().isAvailable()).isTrue();
+        assertThat(response.getBody().getSource())
+                .extracting(
+                        source -> source.getScheduleId(),
+                        source -> source.getScheduleDayId(),
+                        source -> source.getDate(),
+                        source -> source.getDayOfWeek(),
+                        source -> source.getProposalId(),
+                        source -> source.getProposalIndex(),
+                        source -> source.getProposalCount()
+                )
+                .containsExactly(
+                        fixture.schedule().getId(),
+                        sourceDay.getId(),
+                        LocalDate.of(2026, 10, 26),
+                        java.time.DayOfWeek.MONDAY,
+                        sourceProposal.getId(),
+                        0,
+                        1
+                );
+        assertThat(response.getBody().getValues())
+                .extracting(
+                        values -> values.getHourStart(),
+                        values -> values.getHourEnd(),
+                        values -> values.getServiceLengthStart(),
+                        values -> values.getServiceLengthEnd(),
+                        values -> values.getBreakMode(),
+                        values -> values.getBreakLengthStart(),
+                        values -> values.getBreakLengthEnd(),
+                        values -> values.getAlternativeGroup(),
+                        values -> values.getPairParticipantId()
+                )
+                .containsExactly(7, 15, 4, 6, 1, 1, 2, null, null);
+        assertThat(proposalRepository.count()).isEqualTo(proposalCountBeforeRequest);
+    }
+
+    @Test
+    void shouldReturnUnavailablePrefillAsOkWhenNoHistoricalSourceExists() {
+        Fixture fixture = seedFixture();
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/proposals/schedule-day/{scheduleDayId}/participant/{participantId}/prefill",
+                HttpMethod.GET,
+                authorizedRequest(jwt),
+                String.class,
+                fixture.scheduleDay().getId(),
+                fixture.assignedParticipant().getId()
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody())
+                .contains("\"available\":false", "\"source\":null", "\"values\":null");
+    }
+
+    @Test
     void shouldForbidDeletingProposalForParticipantNotAssignedToAuthenticatedAgent() {
         Fixture fixture = seedFixture();
         Proposal proposal = saveProposal(
@@ -405,6 +642,92 @@ class ApiFunctionalTest {
         assertThat(savedProposal.getParticipant().getId()).isEqualTo(fixture.assignedParticipant().getId());
         assertThat(savedProposal.getInsertingParticipant().getId()).isEqualTo(fixture.agent().getId());
         assertThat(savedProposal.getPairParticipant()).isNull();
+    }
+
+    @Test
+    void shouldRejectOverlappingProposalThroughHttpApiWhenThereIsNoSharedAlternativeGroup() {
+        Fixture fixture = seedFixture();
+        saveProposal(
+                fixture.assignedParticipant(),
+                fixture.agent(),
+                fixture.scheduleDay(),
+                (short) 7,
+                (short) 15
+        );
+        String jwt = authenticate(fixture.invitationToken()).getJwtToken();
+        CreateProposalRequest request = new CreateProposalRequest(
+                fixture.assignedParticipant().getId(),
+                fixture.scheduleDay().getId(),
+                7,
+                15,
+                4,
+                6,
+                1,
+                2
+        );
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/proposals",
+                HttpMethod.POST,
+                authorizedRequest(jwt, request),
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(proposalRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldExposeSelectionPermissionsAndCreateProposalWithPairBreakModeAndAlternativeGroup() {
+        Fixture fixture = seedFixture();
+        Participant selectedPairParticipant = saveParticipant("Selected pair", "selected-pair@example.test");
+        fixture.schedule().setAccessibleParticipants(List.of(
+                fixture.assignedParticipant(),
+                fixture.directlyScheduledParticipant(),
+                selectedPairParticipant
+        ));
+        scheduleRepository.saveAndFlush(fixture.schedule());
+        fixture.agent().setAssignedParticipants(new ArrayList<>(List.of(
+                fixture.assignedParticipant(),
+                selectedPairParticipant
+        )));
+        fixture.agent().setAllowPairSelection(true);
+        fixture.agent().setAllowAlternativeGroupSelection(true);
+        participantRepository.saveAndFlush(fixture.agent());
+
+        RestAuthResponse authentication = authenticate(fixture.invitationToken());
+        assertThat(authentication.isAllowPairSelection()).isTrue();
+        assertThat(authentication.isAllowAlternativeGroupSelection()).isTrue();
+        CreateProposalRequest request = new CreateProposalRequest(
+                fixture.assignedParticipant().getId(),
+                fixture.scheduleDay().getId(),
+                7,
+                15,
+                4,
+                6,
+                1,
+                2
+        );
+        request.setPairParticipantId(selectedPairParticipant.getId());
+        request.setBreakMode(2);
+        request.setAlternativeGroup("once-a-week");
+
+        ResponseEntity<ProposalDto> response = restTemplate.exchange(
+                "/api/proposals",
+                HttpMethod.POST,
+                authorizedRequest(authentication.getJwtToken(), request),
+                ProposalDto.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getPairParticipantId()).isEqualTo(selectedPairParticipant.getId());
+        assertThat(response.getBody().getBreakMode()).isEqualTo(2);
+        assertThat(response.getBody().getAlternativeGroup()).isEqualTo("once-a-week");
+        Proposal savedProposal = proposalRepository.findById(response.getBody().getId()).orElseThrow();
+        assertThat(savedProposal.getPairParticipant().getId()).isEqualTo(selectedPairParticipant.getId());
+        assertThat(savedProposal.getBreakMode().getCode()).isEqualTo((short) 2);
+        assertThat(savedProposal.getAlternativeGroup()).isEqualTo("once-a-week");
     }
 
     @Test
@@ -523,6 +846,7 @@ class ApiFunctionalTest {
         ScheduleDay scheduleDay = new ScheduleDay();
         scheduleDay.setSchedule(schedule);
         scheduleDay.setDayOfWeek((short) 1);
+        scheduleDay.setScheduleDate(LocalDate.of(2026, 11, 2));
         scheduleDay.setName("Monday");
         scheduleDay = scheduleDayRepository.saveAndFlush(scheduleDay);
         saveScheduleEntry(scheduleDay, "17:00", (short) 17);

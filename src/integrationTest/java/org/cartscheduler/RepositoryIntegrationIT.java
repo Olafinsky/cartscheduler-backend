@@ -1,18 +1,27 @@
 package org.cartscheduler;
 
 import jakarta.persistence.EntityManager;
+import org.cartscheduler.entity.ConfigPairCompatibilityMode;
+import org.cartscheduler.entity.ConfigPairRule;
+import org.cartscheduler.entity.ConfigParticipantRule;
 import org.cartscheduler.entity.Participant;
 import org.cartscheduler.entity.ParticipantAccessToken;
 import org.cartscheduler.entity.Proposal;
+import org.cartscheduler.entity.ConfigGeneration;
 import org.cartscheduler.entity.Schedule;
 import org.cartscheduler.entity.ScheduleDay;
 import org.cartscheduler.entity.ScheduleEntry;
 import org.cartscheduler.repository.ParticipantAccessTokenRepository;
 import org.cartscheduler.repository.ParticipantRepository;
 import org.cartscheduler.repository.ProposalRepository;
+import org.cartscheduler.repository.ConfigGenerationRepository;
+import org.cartscheduler.repository.ConfigPairRuleRepository;
+import org.cartscheduler.repository.ConfigParticipantRuleRepository;
 import org.cartscheduler.repository.ScheduleDayRepository;
 import org.cartscheduler.repository.ScheduleEntryRepository;
 import org.cartscheduler.repository.ScheduleRepository;
+import org.cartscheduler.service.generation.ScheduleGenerationResult;
+import org.cartscheduler.service.generation.ScheduleGenerationService;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +35,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -74,10 +84,58 @@ class RepositoryIntegrationIT {
     @Autowired
     private ScheduleEntryRepository scheduleEntryRepository;
 
+    @Autowired
+    private ConfigGenerationRepository configGenerationRepository;
+
+    @Autowired
+    private ConfigParticipantRuleRepository configParticipantRuleRepository;
+
+    @Autowired
+    private ConfigPairRuleRepository configPairRuleRepository;
+
+    @Autowired
+    private ScheduleGenerationService scheduleGenerationService;
+
     @Test
-    void shouldApplyInitialFlywayMigrationToIsolatedMySqlDatabase() {
-        Integer migrationCount = jdbcTemplate.queryForObject(
+    void shouldApplyFlywayMigrationsToIsolatedMySqlDatabase() {
+        Integer initialMigrationCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '1' AND success = true",
+                Integer.class
+        );
+        Integer pairAndBreakMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '3' AND success = true",
+                Integer.class
+        );
+        Integer alternativeGroupMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '4' AND success = true",
+                Integer.class
+        );
+        Integer generationConfigurationMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '5' AND success = true",
+                Integer.class
+        );
+        Integer calendarConfigurationMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '6' AND success = true",
+                Integer.class
+        );
+        Integer participantAutomationMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '7' AND success = true",
+                Integer.class
+        );
+        Integer scheduleDateMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '8' AND success = true",
+                Integer.class
+        );
+        Integer proposalStatusIndexMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '9' AND success = true",
+                Integer.class
+        );
+        Integer assignmentDistributionScoresMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '12' AND success = true",
+                Integer.class
+        );
+        Integer removeUniquePairDiversityScoreMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '13' AND success = true",
                 Integer.class
         );
         Integer participantsTableCount = jdbcTemplate.queryForObject(
@@ -86,8 +144,141 @@ class RepositoryIntegrationIT {
                 Integer.class
         );
 
-        assertThat(migrationCount).isEqualTo(1);
+        Integer allowPairSelectionColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'allow_pair_selection'",
+                Integer.class
+        );
+        Integer breakModeColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'proposals' " +
+                        "AND column_name = 'break_mode'",
+                Integer.class
+        );
+        Integer allowAlternativeGroupSelectionColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'allow_alternative_group_selection'",
+                Integer.class
+        );
+        Integer alternativeGroupColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'proposals' " +
+                        "AND column_name = 'alternative_group'",
+                Integer.class
+        );
+        Integer participantEnabledColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'is_enabled'",
+                Integer.class
+        );
+        Integer participantAutoassignmentColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'new_schedule_autoassignment_enabled'",
+                Integer.class
+        );
+        Integer participantAutoinvitementColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'participants' " +
+                        "AND column_name = 'new_schedule_autoinvitement_enabled'",
+                Integer.class
+        );
+        Integer scheduleDateColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'schedule_days' " +
+                        "AND column_name = 'schedule_date'",
+                Integer.class
+        );
+        Integer proposalStatusIndexCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.statistics " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'proposals' " +
+                        "AND index_name = 'idx_proposals_schedule_day_participant'",
+                Integer.class
+        );
+        Integer generationConfigurationTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_generation'",
+                Integer.class
+        );
+        Integer obsoleteUniquePairPointsColumnCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_generation' " +
+                        "AND column_name = 'unique_pair_points'",
+                Integer.class
+        );
+        Integer participantRulesTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_participant_rules'",
+                Integer.class
+        );
+        Integer candidateAssignmentScoresTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_candidate_assignment_scores'",
+                Integer.class
+        );
+        Integer pairAssignmentScoresTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_pair_assignment_scores'",
+                Integer.class
+        );
+        Integer obsoleteCandidateAvailabilityScoresTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_candidate_availability_scores'",
+                Integer.class
+        );
+        Integer scheduleDaysConfigurationTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_schedule_days'",
+                Integer.class
+        );
+        Integer restrictedDatesConfigurationTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_schedule_restricted_dates'",
+                Integer.class
+        );
+        Integer obsoleteRowScoreTableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables " +
+                        "WHERE table_schema = DATABASE() AND table_name = 'config_row_full_or_empty_scores'",
+                Integer.class
+        );
+        Integer globalConfigurationRowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM config_generation WHERE id = 1",
+                Integer.class
+        );
+
+        assertThat(initialMigrationCount).isEqualTo(1);
+        assertThat(pairAndBreakMigrationCount).isEqualTo(1);
+        assertThat(alternativeGroupMigrationCount).isEqualTo(1);
+        assertThat(generationConfigurationMigrationCount).isEqualTo(1);
+        assertThat(calendarConfigurationMigrationCount).isEqualTo(1);
+        assertThat(participantAutomationMigrationCount).isEqualTo(1);
+        assertThat(scheduleDateMigrationCount).isEqualTo(1);
+        assertThat(proposalStatusIndexMigrationCount).isEqualTo(1);
+        assertThat(assignmentDistributionScoresMigrationCount).isEqualTo(1);
+        assertThat(removeUniquePairDiversityScoreMigrationCount).isEqualTo(1);
         assertThat(participantsTableCount).isEqualTo(1);
+        assertThat(allowPairSelectionColumnCount).isEqualTo(1);
+        assertThat(breakModeColumnCount).isEqualTo(1);
+        assertThat(allowAlternativeGroupSelectionColumnCount).isEqualTo(1);
+        assertThat(alternativeGroupColumnCount).isEqualTo(1);
+        assertThat(participantEnabledColumnCount).isEqualTo(1);
+        assertThat(participantAutoassignmentColumnCount).isEqualTo(1);
+        assertThat(participantAutoinvitementColumnCount).isEqualTo(1);
+        assertThat(scheduleDateColumnCount).isEqualTo(1);
+        assertThat(proposalStatusIndexCount).isEqualTo(2);
+        assertThat(generationConfigurationTableCount).isEqualTo(1);
+        assertThat(obsoleteUniquePairPointsColumnCount).isZero();
+        assertThat(participantRulesTableCount).isEqualTo(1);
+        assertThat(candidateAssignmentScoresTableCount).isEqualTo(1);
+        assertThat(pairAssignmentScoresTableCount).isEqualTo(1);
+        assertThat(obsoleteCandidateAvailabilityScoresTableCount).isZero();
+        assertThat(scheduleDaysConfigurationTableCount).isEqualTo(1);
+        assertThat(restrictedDatesConfigurationTableCount).isEqualTo(1);
+        assertThat(obsoleteRowScoreTableCount).isZero();
+        assertThat(globalConfigurationRowCount).isEqualTo(1);
     }
 
     @Test
@@ -231,6 +422,165 @@ class RepositoryIntegrationIT {
     }
 
     @Test
+    void shouldLoadParticipantsForAdministrationRuleViews() {
+        Participant firstParticipant = saveParticipant("first-rule@example.test");
+        firstParticipant.setName("Anna");
+        participantRepository.saveAndFlush(firstParticipant);
+        Participant secondParticipant = saveParticipant("second-rule@example.test");
+        secondParticipant.setName("Jan");
+        participantRepository.saveAndFlush(secondParticipant);
+
+        ConfigParticipantRule participantRule = new ConfigParticipantRule();
+        participantRule.setParticipant(firstParticipant);
+        participantRule.setPrivilegePoints(0);
+        configParticipantRuleRepository.saveAndFlush(participantRule);
+
+        ConfigPairRule pairRule = new ConfigPairRule();
+        pairRule.setParticipant1(firstParticipant);
+        pairRule.setParticipant2(secondParticipant);
+        pairRule.setCompatibilityMode(ConfigPairCompatibilityMode.ANY);
+        configPairRuleRepository.saveAndFlush(pairRule);
+        entityManager.clear();
+
+        ConfigParticipantRule loadedParticipantRule = configParticipantRuleRepository
+                .findAllWithParticipant()
+                .getFirst();
+        ConfigPairRule loadedPairRule = configPairRuleRepository
+                .findWithParticipantsById(pairRule.getId())
+                .orElseThrow();
+
+        assertThat(Hibernate.isInitialized(loadedParticipantRule.getParticipant())).isTrue();
+        assertThat(loadedParticipantRule.getParticipant().getName()).isEqualTo("Anna");
+        assertThat(Hibernate.isInitialized(loadedPairRule.getParticipant1())).isTrue();
+        assertThat(Hibernate.isInitialized(loadedPairRule.getParticipant2())).isTrue();
+        assertThat(loadedPairRule.getParticipant1().getName()).isEqualTo("Anna");
+        assertThat(loadedPairRule.getParticipant2().getName()).isEqualTo("Jan");
+    }
+
+    @Test
+    void shouldFindOnlyEarlierAccessiblePrefillSourceDaysForTheSameParticipantIdentity() {
+        Participant agent = saveParticipant("prefill-agent@example.test");
+        Participant participant = saveParticipant("prefill-participant@example.test");
+        Participant differentIdentity = saveParticipant("prefill-different@example.test");
+        Schedule currentSchedule = saveSchedule("Current", participant);
+        Schedule earlierSchedule = saveSchedule("Earlier", participant);
+        Schedule inaccessibleSchedule = saveSchedule("Inaccessible", differentIdentity);
+        agent.setAssignedParticipants(new ArrayList<>(List.of(participant, differentIdentity)));
+        participantRepository.saveAndFlush(agent);
+
+        ScheduleDay currentSourceDay = saveScheduleDay(currentSchedule, "Current Monday", (short) 1);
+        currentSourceDay.setScheduleDate(LocalDate.of(2026, 10, 26));
+        scheduleDayRepository.saveAndFlush(currentSourceDay);
+        ScheduleDay earlierSourceDay = saveScheduleDay(earlierSchedule, "Earlier Monday", (short) 1);
+        earlierSourceDay.setScheduleDate(LocalDate.of(2026, 10, 19));
+        scheduleDayRepository.saveAndFlush(earlierSourceDay);
+        ScheduleDay futureDay = saveScheduleDay(currentSchedule, "Future Monday", (short) 1);
+        futureDay.setScheduleDate(LocalDate.of(2026, 11, 9));
+        scheduleDayRepository.saveAndFlush(futureDay);
+        ScheduleDay differentIdentityDay = saveScheduleDay(inaccessibleSchedule, "Different identity", (short) 1);
+        differentIdentityDay.setScheduleDate(LocalDate.of(2026, 10, 26));
+        scheduleDayRepository.saveAndFlush(differentIdentityDay);
+        saveProposal(participant, agent, currentSourceDay, (short) 8, (short) 10);
+        saveProposal(participant, agent, earlierSourceDay, (short) 8, (short) 10);
+        saveProposal(participant, agent, futureDay, (short) 8, (short) 10);
+        saveProposal(differentIdentity, agent, differentIdentityDay, (short) 8, (short) 10);
+        entityManager.clear();
+
+        List<ScheduleDay> currentSources = proposalRepository.findPrefillSourceDaysInSchedule(
+                participant.getId(),
+                agent.getId(),
+                LocalDate.of(2026, 11, 2),
+                currentSchedule.getId()
+        );
+        List<ScheduleDay> earlierSources = proposalRepository.findPrefillSourceDaysInEarlierSchedules(
+                participant.getId(),
+                agent.getId(),
+                LocalDate.of(2026, 11, 2),
+                currentSchedule.getId()
+        );
+
+        assertThat(currentSources).extracting(ScheduleDay::getId).containsExactly(currentSourceDay.getId());
+        assertThat(earlierSources).extracting(ScheduleDay::getId).containsExactly(earlierSourceDay.getId());
+    }
+
+    @Test
+    void shouldFindProposalStatusIdsOnlyForOwnProposalsInRequestedSchedule() {
+        Participant author = saveParticipant("author@example.test");
+        Participant participantWithProposal = saveParticipant("with-proposal@example.test");
+        Participant participantWithOnlyOtherScheduleProposal = saveParticipant("other-schedule@example.test");
+        Participant participantSelectedOnlyAsPair = saveParticipant("pair-only@example.test");
+        Participant anotherParticipant = saveParticipant("another@example.test");
+        Schedule requestedSchedule = saveSchedule("Requested schedule", participantWithProposal);
+        Schedule anotherSchedule = saveSchedule("Another schedule", participantWithOnlyOtherScheduleProposal);
+        ScheduleDay firstRequestedDay = saveScheduleDay(requestedSchedule, "Monday", (short) 1);
+        ScheduleDay secondRequestedDay = saveScheduleDay(requestedSchedule, "Tuesday", (short) 2);
+        ScheduleDay otherScheduleDay = saveScheduleDay(anotherSchedule, "Wednesday", (short) 3);
+
+        Proposal ownProposal = saveProposal(participantWithProposal, author, firstRequestedDay, (short) 8, (short) 10);
+        ownProposal.setPairParticipant(participantSelectedOnlyAsPair);
+        proposalRepository.saveAndFlush(ownProposal);
+        saveProposal(anotherParticipant, author, secondRequestedDay, (short) 8, (short) 10);
+        saveProposal(
+                participantWithOnlyOtherScheduleProposal,
+                author,
+                otherScheduleDay,
+                (short) 8,
+                (short) 10
+        );
+        entityManager.clear();
+
+        List<Long> participantIdsWithProposals = proposalRepository.findParticipantIdsWithProposalsForSchedule(
+                requestedSchedule.getId(),
+                List.of(
+                        participantWithProposal.getId(),
+                        participantWithOnlyOtherScheduleProposal.getId(),
+                        participantSelectedOnlyAsPair.getId()
+                )
+        );
+        List<Long> proposalDayIds = proposalRepository.findScheduleDayIdsWithProposalsForParticipantAndSchedule(
+                participantWithProposal.getId(),
+                requestedSchedule.getId()
+        );
+        List<Long> pairOnlyProposalDayIds = proposalRepository
+                .findScheduleDayIdsWithProposalsForParticipantAndSchedule(
+                        participantSelectedOnlyAsPair.getId(),
+                        requestedSchedule.getId()
+                );
+
+        assertThat(participantIdsWithProposals).containsExactly(participantWithProposal.getId());
+        assertThat(proposalDayIds).containsExactly(firstRequestedDay.getId());
+        assertThat(pairOnlyProposalDayIds).isEmpty();
+    }
+
+    @Test
+    void shouldGenerateAndPersistParticipantsFromProposals() {
+        Participant firstParticipant = saveParticipant("first-generator@example.test");
+        Participant secondParticipant = saveParticipant("second-generator@example.test");
+        Schedule schedule = saveSchedule("Generator schedule", firstParticipant, secondParticipant);
+        ScheduleDay day = saveScheduleDay(schedule, "Monday", (short) 1);
+        ScheduleEntry entry = saveScheduleEntry(day, "08:00", (short) 8);
+        saveProposal(firstParticipant, firstParticipant, day, (short) 8, (short) 8);
+        saveProposal(secondParticipant, secondParticipant, day, (short) 8, (short) 8);
+        ConfigGeneration generationConfiguration = configGenerationRepository
+                .findById(ConfigGeneration.SINGLETON_ID)
+                .orElseThrow();
+        generationConfiguration.setEmptyRowPoints(0);
+        generationConfiguration.setFullRowAdjacentToIncompletePoints(10);
+        generationConfiguration.setFullRowNotAdjacentToIncompletePoints(10);
+        configGenerationRepository.saveAndFlush(generationConfiguration);
+        entityManager.clear();
+
+        ScheduleGenerationResult result = scheduleGenerationService.generate(schedule.getId());
+        entityManager.flush();
+        entityManager.clear();
+
+        ScheduleEntry persistedEntry = scheduleEntryRepository.findById(entry.getId()).orElseThrow();
+        assertThat(result.assignedParticipantCells()).isEqualTo(2);
+        assertThat(persistedEntry.getParticipant1().getId()).isEqualTo(firstParticipant.getId());
+        assertThat(persistedEntry.getParticipant2().getId()).isEqualTo(secondParticipant.getId());
+    }
+
+    @Test
     void shouldReturnOnlyActiveInvitationTokenWithParticipantAndScheduleLoaded() {
         Participant participant = saveParticipant("participant@example.test");
         Schedule schedule = saveSchedule("Main schedule", participant);
@@ -277,12 +627,12 @@ class RepositoryIntegrationIT {
         return scheduleDayRepository.saveAndFlush(scheduleDay);
     }
 
-    private void saveScheduleEntry(ScheduleDay scheduleDay, String name, short hour) {
+    private ScheduleEntry saveScheduleEntry(ScheduleDay scheduleDay, String name, short hour) {
         ScheduleEntry entry = new ScheduleEntry();
         entry.setScheduleDay(scheduleDay);
         entry.setName(name);
         entry.setHour(hour);
-        scheduleEntryRepository.saveAndFlush(entry);
+        return scheduleEntryRepository.saveAndFlush(entry);
     }
 
     private Proposal saveProposal(

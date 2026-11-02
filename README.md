@@ -59,6 +59,40 @@ Jeżeli baza została wcześniej utworzona przez dawny skrypt `cartscheduler.sql
 
 Domyślne wartości konfiguracji można nadpisać zmiennymi `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET` oraz `JWT_EXPIRATION`.
 
+## Jednorazowe generowanie grafiku z konsoli
+
+Po migracji konfiguracja generatora ma jeden wymagany rekord `config_generation` o `id = 1` (jest tworzony automatycznie z neutralną punktacją). Można potem wygenerować i zapisać grafik dla konkretnego harmonogramu bez wystawiania API:
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --schedule-generation.schedule-id=1"
+```
+
+Komenda zamyka kontekst aplikacji po zakończeniu generowania. Opcjonalne reguły są zgrupowane w tabelach `config_participant_rules` (długości i przywilej uczestnika), `config_pair_rules` (dopuszczalność i punktacja konkretnej pary), `config_candidate_assignment_scores` (punktacja kolejnych przydzieleń uczestnika) oraz `config_pair_assignment_scores` (punktacja kolejnych wystąpień pary). Globalna punktacja wierszy jest przechowywana w `config_generation`.
+
+Od migracji `V12` tabela `config_candidate_availability_scores` jest zastępowana przez `config_candidate_assignment_scores`; jej poprzednie wiersze są usuwane, ponieważ miały inną semantykę. Nowa tabela przyznaje punkty za kolejne faktyczne przydzielenia uczestnika w całym grafiku. Tabela `config_pair_assignment_scores` działa analogicznie dla kolejnych użyć konkretnej pary. Zakresy w obu tabelach nie mogą na siebie nachodzić.
+
+### Limit czasu wyszukiwania
+
+Maksymalny czas pracy algorytmu generującego ustawia parametr `schedule-generation.search-time-limit`. Na przykład poniższa komenda ogranicza wyszukiwanie do 60 sekund (`PT60S`; domyślna wartość to `PT20S`):
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --schedule-generation.schedule-id=1 --schedule-generation.search-time-limit=PT60S"
+```
+
+Parametr ogranicza tylko etap wyszukiwania grafiku — uruchomienie Spring Boot, odczyt z bazy i eksport XLSX mogą nieznacznie wydłużyć całkowity czas polecenia. Po osiągnięciu limitu zapisywany jest najlepszy poprawny grafik znaleziony do tego momentu; jeśli nie uda się znaleźć poprawnego wariantu, polecenie zakończy się błędem.
+
+Do pomiaru rzeczywistego czasu całej operacji bez zmieniania danych użyj trybu podglądu i PowerShellowego `Measure-Command`:
+
+```powershell
+(Measure-Command {
+    .\gradlew.bat bootRun --args="--spring.main.web-application-type=none --schedule-generation.schedule-id=1 --schedule-generation.dry-run=true --schedule-generation.search-time-limit=PT60S"
+}).TotalSeconds
+```
+
+Migracja `V5__consolidate_schedule_generation_configuration.sql` celowo usuwa zawartość dawnych tabel `config_*`; nie zmienia grafików, propozycji ani tabeli `enforced_participants`.
+
+Po udanym generowaniu ta sama komenda zapisuje plik XLSX z gotowym grafikiem w `build/generated-schedules/schedule-<id>.xlsx`. Katalog można zmienić zmienną `SCHEDULE_EXPORT_OUTPUT_DIRECTORY`.
+
 ## Testy
 
 | Rodzaj | Katalog | Konwencja nazwy | Polecenie |

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Podgląd daty zastrzeżonej')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><div><h1 class="page-heading h2 mb-1">Podgląd daty zastrzeżonej</h1></div><div class="d-flex gap-2"><a class="btn btn-outline-secondary" th:href="@{/admin/config/restricted-dates}">Wróć do listy</a><a class="btn btn-primary" th:href="@{/admin/config/restricted-dates/{id}/edit(id=${restrictedDate.id})}"><i class="bi bi-pencil me-1"></i>Edytuj</a></div></div>
+    <section class="card content-card"><div class="table-responsive"><table class="table mb-0"><tbody>
+        <tr><th scope="row" class="w-25">ID</th><td th:text="${restrictedDate.id}"></td></tr>
+        <tr><th scope="row">Data</th><td th:text="${#temporals.format(restrictedDate.restrictedDate, 'dd.MM.yyyy')}"></td></tr>
+    </tbody></table></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

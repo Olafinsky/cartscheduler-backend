@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Błąd')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-5">
+    <section class="card content-card mx-auto" style="max-width: 42rem;">
+        <div class="card-body p-4 text-center">
+            <div class="display-5 text-danger mb-3"><i class="bi bi-exclamation-octagon"></i></div>
+            <h1 class="h3 page-heading">Nie znaleziono żądanego zasobu</h1>
+            <p class="text-secondary" th:text="${message ?: 'Żądany rekord nie istnieje lub został usunięty.'}"></p>
+            <a class="btn btn-primary" th:href="@{/admin}">Wróć do podsumowania</a>
+        </div>
+    </section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

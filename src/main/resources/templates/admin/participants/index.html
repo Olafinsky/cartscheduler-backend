@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Uczestnicy')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container-fluid py-4 px-lg-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div><h1 class="page-heading h2 mb-1">Uczestnicy</h1><p class="text-secondary mb-0">Dane uczestników i ich uprawnienia do zgłaszania propozycji.</p></div>
+        <a class="btn btn-primary" th:href="@{/admin/participants/new}"><i class="bi bi-person-plus me-1"></i>Dodaj uczestnika</a>
+    </div>
+    <div th:replace="~{fragments/layout :: alerts}"></div>
+    <section class="card content-card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>ID</th><th>Nazwa</th><th>E-mail</th><th>Aktywny</th><th>Autoprzydział</th><th>Autozaproszenia</th><th class="actions-column">Akcje</th></tr></thead>
+        <tbody>
+        <tr th:each="participant : ${participants}">
+            <td th:text="${participant.id}"></td>
+            <td class="fw-semibold" th:text="${participant.name}"></td>
+            <td th:text="${participant.email}"></td>
+            <td><i th:class="${participant.enabled ? 'bi bi-check-circle-fill text-success' : 'bi bi-x-circle-fill text-secondary'}" th:attr="aria-label=${participant.enabled ? 'Tak' : 'Nie'}"></i></td>
+            <td><i th:class="${participant.newScheduleAutoassignmentEnabled ? 'bi bi-check-circle-fill text-success' : 'bi bi-x-circle-fill text-secondary'}" th:attr="aria-label=${participant.newScheduleAutoassignmentEnabled ? 'Tak' : 'Nie'}"></i></td>
+            <td><i th:class="${participant.newScheduleAutoinvitementEnabled ? 'bi bi-check-circle-fill text-success' : 'bi bi-x-circle-fill text-secondary'}" th:attr="aria-label=${participant.newScheduleAutoinvitementEnabled ? 'Tak' : 'Nie'}"></i></td>
+            <td class="actions-column">
+                <a class="btn btn-sm btn-outline-primary icon-action" th:href="@{/admin/participants/{id}(id=${participant.id})}" aria-label="Podgląd" title="Podgląd"><i class="bi bi-eye"></i></a>
+                <a class="btn btn-sm btn-outline-secondary icon-action" th:href="@{/admin/participants/{id}/edit(id=${participant.id})}" aria-label="Edytuj" title="Edytuj"><i class="bi bi-pencil"></i></a>
+                <form class="d-inline" th:action="@{/admin/participants/{id}/delete(id=${participant.id})}" method="post" onsubmit="return confirm('Usunąć tego uczestnika? Powiązane dane zostaną usunięte zgodnie z regułami bazy.');">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                    <button class="btn btn-sm btn-outline-danger icon-action" type="submit" aria-label="Usuń" title="Usuń"><i class="bi bi-trash"></i></button>
+                </form>
+            </td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(participants)}"><td colspan="7" class="text-center text-secondary py-4">Brak uczestników.</td></tr>
+        </tbody>
+    </table></div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>

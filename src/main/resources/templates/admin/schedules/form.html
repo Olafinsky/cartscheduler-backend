@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pl" xmlns:th="https://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Edycja grafiku')}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navigation}"></nav>
+<main class="container py-4">
+    <div class="mb-4">
+        <h1 class="page-heading h2 mb-1">Edycja grafiku</h1>
+        <p class="text-secondary mb-0">Zmień nazwę grafiku oraz osoby mające do niego dostęp.</p>
+    </div>
+    <section class="card content-card"><div class="card-body p-4">
+        <form th:object="${form}" th:action="@{/admin/schedules/{id}/edit(id=${scheduleId})}" method="post" novalidate autocomplete="off">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label" for="name">Nazwa grafiku *</label>
+                    <input id="name" type="text" class="form-control" th:field="*{name}" maxlength="256" autocomplete="off" th:classappend="${#fields.hasErrors('name')} ? ' is-invalid' : ''">
+                    <div class="invalid-feedback" th:errors="*{name}"></div>
+                </div>
+            </div>
+
+            <h2 class="form-section-title mt-4">Dostęp uczestników</h2>
+            <p class="small text-secondary">Zaznaczeni uczestnicy mają bezpośredni dostęp do grafiku. Dostęp ich agentów wynika z przypisań uczestników.</p>
+            <div class="agent-list" th:classappend="${#fields.hasErrors('participantIds')} ? ' border-danger' : ''">
+                <div class="form-check" th:each="participant : ${allParticipants}">
+                    <input class="form-check-input" type="checkbox" th:field="*{participantIds}" th:value="${participant.id}">
+                    <label class="form-check-label" th:text="${participant.name + ' (' + participant.email + ')'}"></label>
+                </div>
+                <p class="small text-secondary mb-0" th:if="${#lists.isEmpty(allParticipants)}">Brak uczestników do przypisania.</p>
+            </div>
+            <div class="text-danger small mt-1" th:if="${#fields.hasErrors('participantIds')}" th:errors="*{participantIds}"></div>
+
+            <div class="mt-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Zapisz</button>
+                <a class="btn btn-outline-secondary" th:href="@{/admin/schedules}">Anuluj</a>
+            </div>
+        </form>
+    </div></section>
+</main>
+<th:block th:replace="~{fragments/layout :: scripts}"></th:block>
+</body>
+</html>
